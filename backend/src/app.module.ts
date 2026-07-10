@@ -3,13 +3,14 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { RedditModule } from './reddit/reddit.module';
+import { AuthModule } from './auth/auth.module';
 
 /**
  * Root application module.
  *
- * Loads configuration globally and composes the feature modules. Auth is
- * intentionally not wired yet — it arrives as the next feature and will add its
- * own module plus a global JwtAuthGuard here.
+ * Loads configuration globally and composes the feature modules. AuthModule
+ * registers the global JwtAuthGuard + RolesGuard, so every route is protected by
+ * default (opt out with `@Public()`).
  */
 @Module({
   imports: [
@@ -18,11 +19,9 @@ import { RedditModule } from './reddit/reddit.module';
     PrismaModule,
     UsersModule,
     RedditModule,
-    // TODO(auth): import AuthModule here.
+    AuthModule,
   ],
   controllers: [],
-  providers: [
-    // TODO(auth): register JwtAuthGuard as a global APP_GUARD, opt out via @Public().
-  ],
+  providers: [],
 })
 export class AppModule {}

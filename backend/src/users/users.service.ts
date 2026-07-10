@@ -1,13 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { hashPassword } from '../common/crypto/password.util';
 
 /**
- * Owns all persistence and business logic for Dash users.
- *
- * Scaffold stage: method signatures are stubbed so the auth feature can fill in
- * hashing/validation without restructuring. Controllers must stay thin and
- * delegate here.
+ * Owns all persistence and business logic for Dash users. Controllers stay thin
+ * and delegate here; passwords are hashed in this layer, never above it.
  */
 @Injectable()
 export class UsersService {
@@ -22,11 +20,47 @@ export class UsersService {
   }
 
   /**
-   * Create a new user record.
-   * TODO(auth): accept a validated DTO and a pre-hashed password.
-   * @returns the created user.
+   * Look up a user by id (used by auth for /me and refresh).
+   * @returns the matching user, or null if none exists.
    */
-  async create(data: { email: string; passwordHash: string }): Promise<User> {
-    return this.prisma.user.create({ data });
+  async findById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  /** List all users, oldest first (admin listing). */
+  async findAll(): Promise<User[]> {
+    return this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+  }
+
+  /**
+   * Create a user with a hashed password.
+   * @param data.role defaults to `shiller`; only the seed passes `admin`.
+   * @returns the created user.
+   * @throws ConflictException if the email is already registered (Prisma P2002).
+   */
+  async create(data: {
+    email: string;
+    password: string;
+    role?: UserRole;
+  }): Promise<User> {
+    const passwordHash = await hashPassword(data.password);
+    try {
+      return await this.prisma.user.create({
+        data: {
+          email: data.email,
+          passwordHash,
+          role: data.role ?? 'shiller',
+        },
+      });
+    } catch (e) {
+      // P2002 = unique constraint violation (email already in use).
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new ConflictException('Email already in use');
+      }
+      throw e;
+    }
   }
 }
