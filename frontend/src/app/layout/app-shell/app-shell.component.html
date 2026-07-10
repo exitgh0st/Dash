@@ -1,0 +1,45 @@
+<mat-sidenav-container class="shell-container">
+  <!-- On handset: overlay drawer, closed by default. On desktop: docked, open. -->
+  <mat-sidenav
+    #drawer
+    class="shell-sidenav"
+    fixedInViewport
+    [attr.role]="isHandset() ? 'dialog' : 'navigation'"
+    [mode]="isHandset() ? 'over' : 'side'"
+    [opened]="!isHandset()"
+  >
+    <mat-toolbar class="sidenav-brand">Dash</mat-toolbar>
+    <mat-nav-list>
+      <a
+        mat-list-item
+        routerLink="/dashboard"
+        routerLinkActive="active-link"
+        (click)="isHandset() && drawer.close()"
+      >
+        <mat-icon matListItemIcon>dashboard</mat-icon>
+        <span matListItemTitle>Dashboard</span>
+      </a>
+    </mat-nav-list>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <mat-toolbar color="primary">
+      <!-- Menu button toggles the drawer; only meaningful on handset widths. -->
+      @if (isHandset()) {
+        <button
+          type="button"
+          mat-icon-button
+          aria-label="Toggle navigation"
+          (click)="drawer.toggle()"
+        >
+          <mat-icon>menu</mat-icon>
+        </button>
+      }
+      <span>Dash</span>
+    </mat-toolbar>
+
+    <main class="shell-content">
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>

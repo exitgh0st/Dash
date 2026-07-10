@@ -1,0 +1,18 @@
+<h1>Dashboard</h1>
+
+@if (loading()) {
+  <!-- Loading state -->
+  <div class="state-center">
+    <mat-progress-spinner mode="indeterminate" diameter="48" />
+  </div>
+} @else if (items().length === 0) {
+  <!-- Empty state -->
+  <mat-card class="empty-state" appearance="outlined">
+    <mat-card-content class="state-center">
+      <mat-icon class="empty-icon">inbox</mat-icon>
+      <p>Nothing here yet. Linked Reddit accounts and quota status will appear here.</p>
+    </mat-card-content>
+  </mat-card>
+} @else {
+  <!-- Populated state (added when data exists). -->
+}

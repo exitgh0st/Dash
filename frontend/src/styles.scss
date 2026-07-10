@@ -1,0 +1,38 @@
+// Dash global styles.
+@use '@angular/material' as mat;
+
+html {
+  color-scheme: light;
+
+  // Angular Material 20 system theme. Azure primary as a neutral starting point;
+  // admin/shiller accent colors are chosen during theming (see TODO below).
+  @include mat.theme(
+    (
+      color: (
+        theme-type: light,
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      typography: Roboto,
+      density: 0,
+    )
+  );
+
+  // Semantic status colors (CLAUDE.md). Exposed as CSS custom properties so any
+  // component can reference them without re-importing SCSS.
+  --quota-met: #4caf50; // quota met
+  --quota-short: #ff9800; // quota short
+  --account-error: #f44336; // account banned / suspended / error
+
+  // TODO(theming): pick distinct admin and shiller accent colors.
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+}
