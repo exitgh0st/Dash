@@ -1,0 +1,23 @@
+# Root ignores spanning both sub-projects. Each project also has its own.
+
+# Dependencies
+**/node_modules
+
+# Build output
+backend/dist
+frontend/dist
+
+# Environment / secrets — never commit
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Angular cache
+frontend/.angular
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
