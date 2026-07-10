@@ -1,0 +1,54 @@
+// Dash Prisma schema — core entities for tracking Reddit karma-farming work.
+// Skeleton scaffold: schema + `prisma generate` only. No migration is run yet
+// (per CLAUDE.md, migrations are added deliberately, not during scaffolding).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Dash account role. Drives role-aware routing and guards.
+enum UserRole {
+  admin
+  shiller
+}
+
+/// Health of a linked Reddit account, surfaced with semantic colors in the UI.
+enum RedditAccountStatus {
+  active
+  banned
+  suspended
+  error
+}
+
+/// A Dash user. Shillers own 1..N linked Reddit accounts; admins oversee all.
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  passwordHash   String
+  role           UserRole        @default(shiller)
+  redditAccounts RedditAccount[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+/// A Reddit account linked by a shiller via OAuth. The refresh token is stored
+/// encrypted at rest and is never logged or returned to the client.
+model RedditAccount {
+  id                    String              @id @default(uuid())
+  userId                String
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redditUsername        String
+  refreshTokenEncrypted String // AES-256-GCM ciphertext; never logged, never returned to client
+  status                RedditAccountStatus @default(active)
+  lastCheckedAt         DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // One link per (shiller, reddit account) — prevents duplicate links.
+  @@unique([userId, redditUsername])
+}
