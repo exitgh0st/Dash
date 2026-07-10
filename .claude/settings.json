@@ -1,0 +1,21 @@
+{
+  "env": {
+    "BASH_MAX_OUTPUT_LENGTH": "150000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npx nest:*)",
+      "Bash(npx ng:*)",
+      "Bash(npx prisma:*)"
+    ],
+    "deny": [
+      "Read(dash-api/node_modules/**)",
+      "Read(dash-ui/node_modules/**)",
+      "Read(dash-api/dist/**)",
+      "Read(dash-ui/dist/**)",
+      "Read(dash-api/generated/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
+    ]
+  }
+}
