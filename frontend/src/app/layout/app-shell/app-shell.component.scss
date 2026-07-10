@@ -19,3 +19,19 @@
   // Highlight the current route in the nav list.
   background: rgba(0, 0, 0, 0.06);
 }
+
+.toolbar-spacer {
+  // Flex spacer pushes account controls to the far end of the toolbar.
+  flex: 1 1 auto;
+}
+
+.toolbar-email {
+  margin-left: 8px;
+}
+
+@media (max-width: 599px) {
+  // Reason: hide the email on narrow screens; the account icon stays tappable.
+  .toolbar-email {
+    display: none;
+  }
+}
