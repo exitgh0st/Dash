@@ -1,70 +1,89 @@
-<mat-sidenav-container class="shell-container">
-  <!-- On handset: overlay drawer, closed by default. On desktop: docked, open. -->
-  <mat-sidenav
-    #drawer
-    class="shell-sidenav"
-    fixedInViewport
-    [attr.role]="isHandset() ? 'dialog' : 'navigation'"
-    [mode]="isHandset() ? 'over' : 'side'"
-    [opened]="!isHandset()"
-  >
-    <mat-toolbar class="sidenav-brand">Dash</mat-toolbar>
-    <mat-nav-list>
-      <a
-        mat-list-item
-        routerLink="/dashboard"
-        routerLinkActive="active-link"
-        (click)="isHandset() && drawer.close()"
-      >
-        <mat-icon matListItemIcon>dashboard</mat-icon>
-        <span matListItemTitle>Dashboard</span>
+<div class="app" [class.drawer-open]="drawerOpen()">
+  <!-- ================= Sidebar ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#062018" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18" />
+          <path d="M18 9l-5 5-3-3-4 4" />
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name disp">Signal<span style="color: var(--green)">.</span></div>
+        <div class="brand-sub">Engagement Monitor</div>
+      </div>
+    </div>
+
+    <div class="nav-label">Overview</div>
+
+    <a class="nav-item" routerLink="/dashboard" routerLinkActive="active" (click)="closeDrawer()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" /></svg>
+      Dashboard
+    </a>
+    <a class="nav-item" routerLink="/accounts" routerLinkActive="active" (click)="closeDrawer()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /><path d="M21 21v-2a4 4 0 0 0-3-3.87" /></svg>
+      Accounts
+    </a>
+    <a class="nav-item" routerLink="/history" routerLinkActive="active" (click)="closeDrawer()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.3 2.6L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+      Activity History
+    </a>
+
+    <!-- Admin-only. The /team route is still guarded by roleGuard('admin'). -->
+    @if (isAdmin()) {
+      <div class="nav-label">Administration</div>
+      <a class="nav-item" routerLink="/team" routerLinkActive="active" (click)="closeDrawer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l9 4.5v5c0 5-3.8 8.5-9 10-5.2-1.5-9-5-9-10v-5z" /></svg>
+        Team &amp; Access
       </a>
-    </mat-nav-list>
-  </mat-sidenav>
+    }
 
-  <mat-sidenav-content>
-    <mat-toolbar color="primary">
-      <!-- Menu button toggles the drawer; only meaningful on handset widths. -->
-      @if (isHandset()) {
-        <button
-          type="button"
-          mat-icon-button
-          aria-label="Toggle navigation"
-          (click)="drawer.toggle()"
-        >
-          <mat-icon>menu</mat-icon>
-        </button>
-      }
-      <span>Dash</span>
-
-      <!-- Push the account controls to the far end of the toolbar. -->
-      <span class="toolbar-spacer"></span>
-
-      @if (currentUser(); as user) {
-        <button
-          type="button"
-          mat-button
-          [matMenuTriggerFor]="accountMenu"
-          aria-label="Account menu"
-        >
-          <mat-icon>account_circle</mat-icon>
-          <!-- Email is hidden on narrow screens to keep the toolbar uncluttered. -->
-          <span class="toolbar-email">{{ user.email }}</span>
-        </button>
-        <mat-menu #accountMenu="matMenu">
-          <div class="account-menu-role" mat-menu-item disabled>
-            Signed in as {{ user.role }}
+    <!-- Footer: who's signed in + logout. -->
+    @if (currentUser(); as user) {
+      <div class="side-foot">
+        <div class="who">
+          <div class="avatar">{{ initials() }}</div>
+          <div class="who-text">
+            <div class="who-name" [title]="user.email">{{ user.email }}</div>
+            <div class="who-role">{{ roleLabel() }}</div>
           </div>
-          <button type="button" mat-menu-item (click)="logout()">
-            <mat-icon>logout</mat-icon>
-            <span>Log out</span>
+          <button type="button" class="logout" aria-label="Log out" (click)="logout()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>
           </button>
-        </mat-menu>
-      }
-    </mat-toolbar>
+        </div>
+      </div>
+    }
+  </aside>
 
-    <main class="shell-content">
+  <!-- Backdrop behind the mobile drawer; tap to dismiss. -->
+  <div class="backdrop" (click)="toggleDrawer()"></div>
+
+  <!-- ================= Main ================= -->
+  <div class="main">
+    <div class="topbar">
+      <!-- Drawer toggle — only meaningful on handset widths. -->
+      @if (isHandset()) {
+        <button type="button" class="menu-btn" aria-label="Toggle navigation" (click)="toggleDrawer()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
+        </button>
+      }
+
+      <div>
+        <div class="page-title disp">{{ pageMeta().title }}</div>
+        <div class="page-crumb">{{ pageMeta().crumb }}</div>
+      </div>
+
+      <!-- Week range pills — shown on the dashboard, which consumes the range. -->
+      @if (showRange()) {
+        <div class="range-pills">
+          <button type="button" [class.on]="range() === 'this-week'" (click)="setRange('this-week')">This week</button>
+          <button type="button" [class.on]="range() === 'last-week'" (click)="setRange('last-week')">Last week</button>
+        </div>
+      }
+    </div>
+
+    <div class="content">
       <router-outlet />
-    </main>
-  </mat-sidenav-content>
-</mat-sidenav-container>
+    </div>
+  </div>
+</div>

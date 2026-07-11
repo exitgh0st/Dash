@@ -1,30 +1,53 @@
-// Dash global styles.
+// Dash global styles — dark "Signal." theme ported from Dashboard_UI_Prototype.html.
 @use '@angular/material' as mat;
 
 html {
-  color-scheme: light;
+  color-scheme: dark;
 
-  // Angular Material 20 system theme. Azure primary as a neutral starting point;
-  // admin/shiller accent colors are chosen during theming (see TODO below).
+  // Angular Material 20 system theme in dark mode. Green primary / violet tertiary
+  // approximate the prototype accents; Material components (dialogs, form fields,
+  // menus, snackbars, date picker) inherit these tokens.
   @include mat.theme(
     (
       color: (
-        theme-type: light,
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
+        theme-type: dark,
+        primary: mat.$green-palette,
+        tertiary: mat.$violet-palette,
       ),
-      typography: Roboto,
+      // Inter for body/plain, Space Grotesk for brand/display — matches the mockup.
+      typography: (
+        plain-family: 'Inter',
+        brand-family: 'Space Grotesk',
+      ),
       density: 0,
     )
   );
 
-  // Semantic status colors (CLAUDE.md). Exposed as CSS custom properties so any
-  // component can reference them without re-importing SCSS.
-  --quota-met: #4caf50; // quota met
-  --quota-short: #ff9800; // quota short
-  --account-error: #f44336; // account banned / suspended / error
+  // ---- Prototype palette (custom properties any component can reference) ----
+  --bg: #0b1120;
+  --shell: #0f1729;
+  --panel: #161f33;
+  --panel-2: #1b263e;
+  --line: #26324b;
+  --line-soft: #1e2a42;
+  --ink: #eaf0fa;
+  --ink-2: #a9b7ce;
+  --ink-3: #6e7e9b;
+  --green: #2dd4a7;
+  --green-dim: #153a32;
+  --amber: #f5a623;
+  --rose: #f76b6b;
+  --rose-dim: #3a1a20;
+  --violet: #8b7bf7;
+  --blue: #4c8df6;
+  --radius: 14px;
+  --radius-sm: 9px;
 
-  // TODO(theming): pick distinct admin and shiller accent colors.
+  // Semantic status vars (CLAUDE.md) remapped onto the prototype palette, so
+  // components already using them adopt the new look for free.
+  --quota-met: var(--green);
+  --quota-short: var(--amber);
+  --account-error: var(--rose);
 }
 
 html,
@@ -34,5 +57,428 @@ body {
 
 body {
   margin: 0;
-  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  // Two soft radial glows over the base background, exactly as the prototype.
+  background:
+    radial-gradient(
+      1200px 600px at 78% -10%,
+      rgba(45, 212, 167, 0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at -5% 110%,
+      rgba(139, 123, 247, 0.07),
+      transparent 55%
+    ),
+    var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'cv05', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+// Type helpers used across feature views.
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.disp {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+// ===========================================================================
+// Shared visual primitives (lifted from the prototype). Global so every feature
+// component renders consistent cards / tables / pills without re-importing SCSS.
+// ===========================================================================
+
+.card {
+  background: linear-gradient(180deg, var(--panel), var(--shell));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+// ---- KPI cards ----
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.kpi .kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.kpi-label {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.kpi-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+}
+.kpi-ico svg {
+  width: 16px;
+  height: 16px;
+}
+.kpi-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
+  margin-top: 12px;
+  letter-spacing: -0.02em;
+}
+.kpi-sub {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 6px;
+}
+
+// ---- Section headers ----
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 26px 0 14px;
+}
+.section-head h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+.section-head .sub {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.link {
+  color: var(--green);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  font-family: inherit;
+}
+
+// ---- Tables ----
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table-wrap thead th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  font-weight: 600;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table-wrap tbody td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-2);
+}
+.table-wrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+.table-wrap tbody tr {
+  background: var(--shell);
+}
+.table-wrap tbody tr:nth-child(even) {
+  background: var(--panel);
+}
+.table-wrap tbody tr.clickable {
+  cursor: pointer;
+}
+.table-wrap tbody tr.clickable:hover {
+  background: var(--panel-2);
+}
+.num {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+// ---- Account cell (avatar + name) ----
+.acct {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.acct .a-av {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0a0f1c;
+  flex: none;
+}
+.acct b {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+}
+.acct span {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.subs {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+// ---- Status / quota pills ----
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  text-transform: capitalize;
+}
+.pill.met {
+  color: var(--green);
+  background: var(--green-dim);
+}
+.pill.miss {
+  color: var(--rose);
+  background: var(--rose-dim);
+}
+.pill.near {
+  color: var(--amber);
+  background: rgba(245, 166, 35, 0.12);
+}
+.pill svg {
+  width: 11px;
+  height: 11px;
+}
+
+// ---- Explanatory note ----
+.note {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 14px;
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.note svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 1px;
+  opacity: 0.7;
+}
+
+// ---- Empty-state block ----
+.empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.empty svg {
+  width: 28px;
+  height: 28px;
+  opacity: 0.6;
+}
+
+// ---- Two-column layout (chart + side panel) ----
+.two-col {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 16px;
+}
+
+// ---- Employee focus banner ----
+.focus-banner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 22px;
+  margin-bottom: 22px;
+  background: linear-gradient(
+    120deg,
+    rgba(45, 212, 167, 0.11),
+    rgba(139, 123, 247, 0.09)
+  );
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.focus-banner .big {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--green), #1fa588);
+  display: grid;
+  place-items: center;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: #062018;
+  flex: none;
+}
+.focus-banner h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+.focus-banner p {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 3px 0 0;
+}
+.focus-stat {
+  margin-left: auto;
+  text-align: right;
+}
+.focus-stat .n {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 26px;
+  font-weight: 600;
+}
+.focus-stat .l {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+// ---- History rows (post/comment activity) ----
+.hist-item {
+  display: flex;
+  gap: 13px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.hist-item:last-child {
+  border-bottom: 0;
+}
+.hist-ico {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--ink-2);
+}
+.hist-ico svg {
+  width: 16px;
+  height: 16px;
+}
+.hist-body {
+  flex: 1;
+  min-width: 0;
+}
+.hist-title {
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.hist-meta {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 3px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hist-eng {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex: none;
+}
+.eng {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.eng svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+.eng.pos {
+  color: var(--green);
+}
+
+// Stack the two-column layout on narrow screens.
+@media (max-width: 1000px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ---- Card entrance animation ----
+.fade {
+  animation: fade 0.3s ease;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
