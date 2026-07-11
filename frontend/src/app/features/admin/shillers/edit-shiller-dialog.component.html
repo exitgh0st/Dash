@@ -1,0 +1,87 @@
+<!-- Thin progress bar pinned to the dialog top while the update is in flight. -->
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+<h2 mat-dialog-title>Edit shiller</h2>
+
+<mat-dialog-content>
+  <form [formGroup]="form" (ngSubmit)="submit()" class="edit-form" id="edit-shiller-form">
+    <mat-form-field appearance="outline">
+      <mat-label>Email</mat-label>
+      <input
+        matInput
+        type="email"
+        formControlName="email"
+        autocomplete="off"
+        required
+      />
+      @if (form.controls.email.hasError('required')) {
+        <mat-error>Email is required</mat-error>
+      } @else if (form.controls.email.hasError('email')) {
+        <mat-error>Enter a valid email</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>New password</mat-label>
+      <input
+        matInput
+        [type]="hidePassword() ? 'password' : 'text'"
+        formControlName="password"
+        autocomplete="new-password"
+      />
+      <button
+        type="button"
+        mat-icon-button
+        matSuffix
+        [attr.aria-label]="hidePassword() ? 'Show password' : 'Hide password'"
+        (click)="hidePassword.set(!hidePassword())"
+      >
+        <mat-icon>{{ hidePassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+      </button>
+      <!-- Optional: blank leaves the password unchanged. -->
+      <mat-hint>Leave blank to keep the current password</mat-hint>
+      @if (form.controls.password.hasError('minlength')) {
+        <mat-error>At least 8 characters</mat-error>
+      }
+    </mat-form-field>
+
+    <!-- Per-account weekly quotas; drive the dashboard's quota-progress cards. -->
+    <mat-form-field appearance="outline">
+      <mat-label>Weekly comment quota (per account)</mat-label>
+      <input matInput type="number" min="0" formControlName="weeklyCommentQuota" required />
+      @if (form.controls.weeklyCommentQuota.hasError('required')) {
+        <mat-error>Enter a quota (0 to disable)</mat-error>
+      } @else if (form.controls.weeklyCommentQuota.hasError('min')) {
+        <mat-error>Cannot be negative</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Weekly post quota (per account)</mat-label>
+      <input matInput type="number" min="0" formControlName="weeklyPostQuota" required />
+      @if (form.controls.weeklyPostQuota.hasError('required')) {
+        <mat-error>Enter a quota (0 to disable)</mat-error>
+      } @else if (form.controls.weeklyPostQuota.hasError('min')) {
+        <mat-error>Cannot be negative</mat-error>
+      }
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button type="button" mat-button [mat-dialog-close]="undefined" [disabled]="loading()">
+    Cancel
+  </button>
+  <!-- Submits the form above via its id so the button can live in the actions bar. -->
+  <button
+    type="submit"
+    form="edit-shiller-form"
+    mat-flat-button
+    color="primary"
+    [disabled]="loading()"
+  >
+    Save
+  </button>
+</mat-dialog-actions>

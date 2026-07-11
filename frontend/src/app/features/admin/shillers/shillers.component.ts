@@ -8,6 +8,14 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { AuthUser, UserRole } from '../../../core/auth/auth.models';
 import { UsersService } from '../../../core/users/users.service';
 import { CreateShillerDialogComponent } from './create-shiller-dialog.component';
+import {
+  EditShillerData,
+  EditShillerDialogComponent,
+} from './edit-shiller-dialog.component';
+import {
+  ConfirmDeleteShillerData,
+  ConfirmDeleteShillerDialogComponent,
+} from './confirm-delete-shiller-dialog.component';
 
 // Avatar palette (prototype colors), assigned by row index.
 const AVATAR_COLORS = [
@@ -64,7 +72,7 @@ export class ShillersComponent implements OnInit {
     });
   }
 
-  /** Open the invite dialog; on a successful create, confirm and refresh. */
+  /** Open the create dialog; on a successful create, confirm and refresh. */
   openCreateDialog(): void {
     const ref = this.dialog.open<
       CreateShillerDialogComponent,
@@ -76,10 +84,69 @@ export class ShillersComponent implements OnInit {
       if (!created) {
         return;
       }
-      this.snackBar.open(`Invited ${created.email}.`, 'Dismiss', {
+      this.snackBar.open(`Created ${created.email}.`, 'Dismiss', {
         duration: 4000,
       });
       this.loadUsers();
+    });
+  }
+
+  /** Open the edit dialog for a shiller; on a successful save, confirm and refresh. */
+  openEditDialog(user: AuthUser): void {
+    const ref = this.dialog.open<
+      EditShillerDialogComponent,
+      EditShillerData,
+      AuthUser
+    >(EditShillerDialogComponent, {
+      data: {
+        id: user.id,
+        email: user.email,
+        weeklyCommentQuota: user.weeklyCommentQuota,
+        weeklyPostQuota: user.weeklyPostQuota,
+      },
+    });
+
+    ref.afterClosed().subscribe((updated) => {
+      if (!updated) {
+        return;
+      }
+      this.snackBar.open(`Updated ${updated.email}.`, 'Dismiss', {
+        duration: 4000,
+      });
+      this.loadUsers();
+    });
+  }
+
+  /** Confirm and delete a shiller; on success, confirm and refresh the list. */
+  confirmDelete(user: AuthUser): void {
+    const ref = this.dialog.open<
+      ConfirmDeleteShillerDialogComponent,
+      ConfirmDeleteShillerData,
+      boolean
+    >(ConfirmDeleteShillerDialogComponent, {
+      data: {
+        email: user.email,
+        redditAccountCount: user.redditAccountCount ?? 0,
+      },
+    });
+
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.users.remove(user.id).subscribe({
+        next: () => {
+          this.snackBar.open(`Deleted ${user.email}.`, 'Dismiss', {
+            duration: 4000,
+          });
+          this.loadUsers();
+        },
+        error: (_err: HttpErrorResponse) => {
+          this.snackBar.open('Could not delete this shiller.', 'Dismiss', {
+            duration: 4000,
+          });
+        },
+      });
     });
   }
 

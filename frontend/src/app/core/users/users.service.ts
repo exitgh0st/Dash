@@ -22,11 +22,37 @@ export class UsersService {
     return this.http.get<AuthUser[]>(this.baseUrl);
   }
 
+  /** Fetch a single user by id (e.g. to prefill the edit dialog). */
+  get(id: string): Observable<AuthUser> {
+    return this.http.get<AuthUser>(`${this.baseUrl}/${id}`);
+  }
+
   /**
    * Create a shiller account. The backend forces `role = shiller`, so only the
    * credentials are sent. A duplicate email surfaces as a 409 for the caller.
    */
   create(email: string, password: string): Observable<AuthUser> {
     return this.http.post<AuthUser>(this.baseUrl, { email, password });
+  }
+
+  /**
+   * Update a shiller's email, password, and/or weekly quotas. Fields left
+   * undefined are not sent, so the caller can change just one. Duplicate email → 409.
+   */
+  update(
+    id: string,
+    changes: {
+      email?: string;
+      password?: string;
+      weeklyCommentQuota?: number;
+      weeklyPostQuota?: number;
+    },
+  ): Observable<AuthUser> {
+    return this.http.patch<AuthUser>(`${this.baseUrl}/${id}`, changes);
+  }
+
+  /** Delete a user. The backend rejects deleting an admin (403). */
+  remove(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${id}`);
   }
 }

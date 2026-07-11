@@ -6,6 +6,10 @@ export interface AuthUser {
   id: string;
   email: string;
   role: UserRole;
+  /** Per-account weekly comment target (admin-editable). */
+  weeklyCommentQuota: number;
+  /** Per-account weekly post target (admin-editable). */
+  weeklyPostQuota: number;
   createdAt: string;
   updatedAt: string;
   /** Owned Reddit-account count — only present on the admin `/api/users` list. */

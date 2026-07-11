@@ -51,18 +51,16 @@ export class ShillerDetailComponent implements OnInit {
     this.load(userId);
   }
 
-  /** Load the shiller's email (for the header) and their accounts together. */
+  /** Load the shiller (for the header email) and their accounts together. */
   private load(userId: string): void {
     this.loading.set(true);
-    // Reuse the existing admin users list to resolve the email — no new endpoint.
+    // Resolve the email via the by-id endpoint instead of scanning the full list.
     forkJoin({
-      users: this.users.list(),
+      user: this.users.get(userId),
       accounts: this.reddit.listForUser(userId),
     }).subscribe({
-      next: ({ users, accounts }) => {
-        this.email.set(
-          users.find((u) => u.id === userId)?.email ?? 'Unknown shiller',
-        );
+      next: ({ user, accounts }) => {
+        this.email.set(user.email);
         this.accounts.set(accounts);
         this.loading.set(false);
       },

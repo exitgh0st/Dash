@@ -3,7 +3,7 @@
     <h2>Team &amp; Access</h2>
     <div class="sub">Roles determine what each person can see and do</div>
   </div>
-  <button type="button" class="link" (click)="openCreateDialog()">+ Invite member</button>
+  <button type="button" class="link" (click)="openCreateDialog()">+ Create</button>
 </div>
 
 @if (loading()) {
@@ -16,7 +16,7 @@
 } @else if (users$().length === 0) {
   <div class="card empty">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg>
-    <p>No team members yet. Invite one to get started.</p>
+    <p>No team members yet. Create one to get started.</p>
   </div>
 } @else {
   <div class="table-wrap">
@@ -43,9 +43,13 @@
             <td class="num">{{ user.redditAccountCount ?? 0 }}</td>
             <td>{{ user.createdAt | date: 'mediumDate' }}</td>
             <td>
-              <!-- Only shillers have a Reddit-account drill-down; admins own none. -->
+              <!-- Only shillers are manageable here; admins can't be edited/deleted. -->
               @if (user.role === 'shiller') {
-                <a class="link" [routerLink]="['/shillers', user.id]">Manage</a>
+                <div class="row-actions">
+                  <a class="link" [routerLink]="['/shillers', user.id]">Manage</a>
+                  <button type="button" class="link" (click)="openEditDialog(user)">Edit</button>
+                  <button type="button" class="link danger" (click)="confirmDelete(user)">Delete</button>
+                </div>
               } @else {
                 <span class="sub">—</span>
               }

@@ -1,3 +1,16 @@
 :host {
   display: block;
 }
+
+// Inline row actions (Manage · Edit · Delete) — keep them on one line, wrap on mobile.
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+// Delete reads as destructive; override the shared `.link` green with the red status var.
+.link.danger {
+  color: var(--red, #f44336);
+}
