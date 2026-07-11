@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reddit Engagement Dashboard — UI Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B1120;
+    --shell:#0F1729;
+    --panel:#161F33;
+    --panel-2:#1B263E;
+    --line:#26324B;
+    --line-soft:#1E2A42;
+    --ink:#EAF0FA;
+    --ink-2:#A9B7CE;
+    --ink-3:#6E7E9B;
+    --green:#2DD4A7;
+    --green-dim:#153a32;
+    --amber:#F5A623;
+    --rose:#F76B6B;
+    --rose-dim:#3a1a20;
+    --violet:#8B7BF7;
+    --blue:#4C8DF6;
+    --radius:14px;
+    --radius-sm:9px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1200px 600px at 78% -10%, rgba(45,212,167,0.06), transparent 60%),
+      radial-gradient(900px 500px at -5% 110%, rgba(139,123,247,0.07), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    font-feature-settings:"cv05","ss01";
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+  .disp{font-family:'Space Grotesk',sans-serif}
+
+  /* ---------- Shell layout ---------- */
+  .app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+  .sidebar{
+    background:linear-gradient(180deg,var(--shell),#0C1424);
+    border-right:1px solid var(--line-soft);
+    padding:22px 16px;
+    display:flex;flex-direction:column;gap:6px;
+    position:sticky;top:0;height:100vh;
+  }
+  .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 20px}
+  .brand-mark{
+    width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(135deg,var(--green),#1FA588);
+    display:grid;place-items:center;flex:none;
+    box-shadow:0 4px 14px rgba(45,212,167,0.32);
+  }
+  .brand-mark svg{width:19px;height:19px}
+  .brand-name{font-family:'Space Grotesk';font-weight:700;font-size:15px;letter-spacing:-0.01em;line-height:1.1}
+  .brand-sub{font-size:11px;color:var(--ink-3);letter-spacing:0.02em;margin-top:1px}
+
+  .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.12em;color:var(--ink-3);padding:14px 10px 6px;font-weight:600}
+  .nav-item{
+    display:flex;align-items:center;gap:11px;
+    padding:9px 11px;border-radius:9px;color:var(--ink-2);
+    font-size:13.5px;font-weight:500;cursor:pointer;
+    border:1px solid transparent;transition:.16s;
+  }
+  .nav-item svg{width:17px;height:17px;flex:none;opacity:.85}
+  .nav-item:hover{background:var(--panel);color:var(--ink)}
+  .nav-item.active{background:var(--panel-2);color:var(--ink);border-color:var(--line)}
+  .nav-item.active svg{opacity:1;color:var(--green)}
+  .nav-item .dot{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--green)}
+
+  .side-foot{margin-top:auto;border-top:1px solid var(--line-soft);padding-top:14px}
+  .who{display:flex;align-items:center;gap:10px;padding:6px 8px}
+  .avatar{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--violet),#6355c9);display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
+  .who-name{font-size:13px;font-weight:600}
+  .who-role{font-size:11px;color:var(--ink-3)}
+
+  /* ---------- Main ---------- */
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{
+    display:flex;align-items:center;gap:16px;
+    padding:16px 30px;border-bottom:1px solid var(--line-soft);
+    position:sticky;top:0;z-index:20;
+    background:rgba(11,17,32,0.82);backdrop-filter:blur(12px);
+  }
+  .page-title{font-family:'Space Grotesk';font-size:19px;font-weight:600;letter-spacing:-0.01em}
+  .page-crumb{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .search{
+    margin-left:auto;display:flex;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:8px 12px;width:240px;color:var(--ink-3);font-size:13px;
+  }
+  .search svg{width:15px;height:15px}
+  .range-pills{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px}
+  .range-pills button{
+    border:0;background:transparent;color:var(--ink-2);
+    font:inherit;font-size:12.5px;font-weight:500;padding:5px 11px;border-radius:6px;cursor:pointer;transition:.14s;
+  }
+  .range-pills button.on{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+
+  /* ---------- Role switcher (prototype control) ---------- */
+  .rolebar{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 30px;background:var(--panel);border-bottom:1px solid var(--line-soft);
+    font-size:12px;color:var(--ink-3);
+  }
+  .rolebar b{color:var(--ink-2);font-weight:600}
+  .role-seg{display:flex;background:var(--shell);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .role-seg button{
+    border:0;background:transparent;color:var(--ink-2);font:inherit;font-size:12.5px;font-weight:600;
+    padding:6px 15px;cursor:pointer;border-right:1px solid var(--line-soft);transition:.14s;
+  }
+  .role-seg button:last-child{border-right:0}
+  .role-seg button.on{background:linear-gradient(135deg,var(--green),#1FA588);color:#062018}
+  .rolebar .hint{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .rolebar .hint svg{width:14px;height:14px}
+
+  .content{padding:26px 30px 60px;max-width:1180px}
+
+  /* ---------- Cards / KPI ---------- */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+  .card{
+    background:linear-gradient(180deg,var(--panel),var(--shell));
+    border:1px solid var(--line);border-radius:var(--radius);padding:18px;
+  }
+  .kpi .kpi-top{display:flex;align-items:center;justify-content:space-between}
+  .kpi-label{font-size:12px;color:var(--ink-3);font-weight:500;letter-spacing:.01em}
+  .kpi-ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--panel-2)}
+  .kpi-ico svg{width:16px;height:16px}
+  .kpi-val{font-family:'JetBrains Mono';font-size:28px;font-weight:600;margin-top:12px;letter-spacing:-0.02em}
+  .kpi-delta{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;margin-top:6px;padding:2px 7px;border-radius:6px}
+  .up{color:var(--green);background:var(--green-dim)}
+  .down{color:var(--rose);background:var(--rose-dim)}
+  .kpi-delta svg{width:12px;height:12px}
+  .kpi-spark{margin-top:12px}
+
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin:26px 0 14px}
+  .section-head h2{font-family:'Space Grotesk';font-size:15px;font-weight:600;letter-spacing:.01em}
+  .section-head .sub{font-size:12px;color:var(--ink-3)}
+  .link{color:var(--green);font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+  .link svg{width:13px;height:13px}
+
+  .two-col{display:grid;grid-template-columns:1.55fr 1fr;gap:16px}
+
+  /* ---------- Chart panel ---------- */
+  .chart-panel{padding:18px 18px 8px}
+  .chart-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .chart-title{font-size:13.5px;font-weight:600}
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--ink-3)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+
+  /* ---------- Table ---------- */
+  .table-wrap{overflow:hidden;border-radius:var(--radius);border:1px solid var(--line)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--ink-3);font-weight:600;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);
+  }
+  tbody td{padding:13px 16px;border-bottom:1px solid var(--line-soft);color:var(--ink-2)}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr{background:var(--shell)}
+  tbody tr:nth-child(even){background:var(--panel)}
+  tbody tr:hover{background:var(--panel-2)}
+  .acct{display:flex;align-items:center;gap:10px}
+  .acct .a-av{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:600;color:#0a0f1c;flex:none}
+  .acct b{color:var(--ink);font-weight:600;font-size:13px}
+  .acct span{font-size:11px;color:var(--ink-3)}
+  .num{font-family:'JetBrains Mono';font-weight:500;color:var(--ink)}
+  .subs{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line);padding:2px 8px;border-radius:20px}
+
+  .pill{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono';font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:20px}
+  .pill.met{color:var(--green);background:var(--green-dim)}
+  .pill.miss{color:var(--rose);background:var(--rose-dim)}
+  .pill.near{color:var(--amber);background:rgba(245,166,35,0.12)}
+  .pill svg{width:11px;height:11px}
+
+  .prog{height:6px;border-radius:4px;background:var(--panel-2);overflow:hidden;width:100px}
+  .prog i{display:block;height:100%;border-radius:4px}
+
+  /* ---------- Employee focus banner ---------- */
+  .focus-banner{
+    display:flex;align-items:center;gap:18px;padding:20px 22px;margin-bottom:22px;
+    background:linear-gradient(120deg,rgba(45,212,167,0.11),rgba(139,123,247,0.09));
+    border:1px solid var(--line);border-radius:var(--radius);
+  }
+  .focus-banner .big{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,var(--green),#1FA588);display:grid;place-items:center;font-family:'Space Grotesk';font-weight:700;font-size:22px;color:#062018;flex:none}
+  .focus-banner h3{font-family:'Space Grotesk';font-size:17px;font-weight:600}
+  .focus-banner p{font-size:12.5px;color:var(--ink-2);margin-top:3px}
+  .focus-stat{margin-left:auto;text-align:right}
+  .focus-stat .n{font-family:'JetBrains Mono';font-size:26px;font-weight:600}
+  .focus-stat .l{font-size:11px;color:var(--ink-3)}
+
+  /* history rows */
+  .hist-item{display:flex;gap:13px;padding:14px 16px;border-bottom:1px solid var(--line-soft)}
+  .hist-item:last-child{border-bottom:0}
+  .hist-ico{width:32px;height:32px;border-radius:8px;background:var(--panel-2);display:grid;place-items:center;flex:none;color:var(--ink-2)}
+  .hist-ico svg{width:16px;height:16px}
+  .hist-body{flex:1;min-width:0}
+  .hist-title{font-size:13px;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hist-meta{font-size:11.5px;color:var(--ink-3);margin-top:3px;display:flex;gap:12px}
+  .hist-eng{display:flex;gap:14px;align-items:center;flex:none}
+  .eng{font-family:'JetBrains Mono';font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px}
+  .eng svg{width:12px;height:12px;opacity:.7}
+  .eng.pos{color:var(--green)}
+
+  .hidden{display:none!important}
+  .fade{animation:fade .3s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .note{font-size:11.5px;color:var(--ink-3);margin-top:14px;display:flex;gap:7px;align-items:flex-start;line-height:1.5}
+  .note svg{width:14px;height:14px;flex:none;margin-top:1px;opacity:.7}
+
+  @media(max-width:1000px){
+    .app{grid-template-columns:1fr}
+    .sidebar{display:none}
+    .kpi-grid{grid-template-columns:repeat(2,1fr)}
+    .two-col{grid-template-columns:1fr}
+    .content{padding:20px}
+    .topbar,.rolebar{padding-left:20px;padding-right:20px}
+    .search{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#062018" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">Signal<span style="color:var(--green)">.</span></div>
+        <div class="brand-sub">Engagement Monitor</div>
+      </div>
+    </div>
+
+    <div class="nav-label">Overview</div>
+    <div class="nav-item active" data-nav="overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+      Dashboard <span class="dot"></span>
+    </div>
+    <div class="nav-item" data-nav="accounts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+      Accounts
+    </div>
+    <div class="nav-item" data-nav="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.3 2.6L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      Activity History
+    </div>
+
+    <div class="nav-label" data-mgr>Management</div>
+    <div class="nav-item" data-nav="quotas" data-mgr>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Targets & Quotas
+    </div>
+    <div class="nav-item" data-nav="payroll" data-mgr>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Payroll Reports
+    </div>
+    <div class="nav-item" data-nav="team" data-admin>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l9 4.5v5c0 5-3.8 8.5-9 10-5.2-1.5-9-5-9-10v-5z"/></svg>
+      Team & Access
+    </div>
+
+    <div class="side-foot">
+      <div class="who">
+        <div class="avatar" id="whoAv">DM</div>
+        <div>
+          <div class="who-name" id="whoName">Dana Mercer</div>
+          <div class="who-role" id="whoRole">Super Admin</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="page-title" id="pageTitle">Dashboard</div>
+        <div class="page-crumb" id="pageCrumb">Overview · Week of Jul 6 – Jul 12, 2026</div>
+      </div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        Search accounts…
+      </div>
+      <div class="range-pills">
+        <button>This week</button>
+        <button class="on">Last week</button>
+        <button>30 days</button>
+        <button>Custom</button>
+      </div>
+    </div>
+
+    <!-- Prototype role switcher -->
+    <div class="rolebar">
+      <b>Preview role:</b>
+      <div class="role-seg">
+        <button class="on" data-role="admin">Super Admin</button>
+        <button data-role="marketing">Marketing</button>
+        <button data-role="employee">Employee</button>
+      </div>
+      <span class="hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        Switch roles to see how each level's view changes
+      </span>
+    </div>
+
+    <div class="content" id="content"><!-- injected --></div>
+  </div>
+</div>
+
+<script>
+// ---------- tiny helpers ----------
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const av=(t,c)=>`<div class="a-av" style="background:${c}">${t}</div>`;
+const colors=['#2DD4A7','#4C8DF6','#8B7BF7','#F5A623','#F76B6B','#38BDF8'];
+
+// sparkline generator
+function spark(data,color,w=120,h=34,fill=true){
+  const max=Math.max(...data),min=Math.min(...data),rng=(max-min)||1;
+  const pts=data.map((d,i)=>[ (i/(data.length-1))*w, h-4-((d-min)/rng)*(h-8) ]);
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area=`${line} L ${w} ${h} L 0 ${h} Z`;
+  const id='g'+Math.random().toString(36).slice(2,7);
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${color}" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    ${fill?`<path d="${area}" fill="url(#${id})"/>`:''}
+    <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// grouped bar chart (posts vs comments per account)
+function barChart(rows,w=560,h=210){
+  const pad={l:34,r:10,t:12,b:34};
+  const iw=w-pad.l-pad.r, ih=h-pad.t-pad.b;
+  const max=Math.max(...rows.flatMap(r=>[r.posts,r.comments]));
+  const step=iw/rows.length, bw=Math.min(18,step/3.2);
+  let g='';
+  // gridlines
+  for(let i=0;i<=4;i++){const y=pad.t+ih-(i/4)*ih;g+=`<line x1="${pad.l}" y1="${y}" x2="${w-pad.r}" y2="${y}" stroke="#26324B" stroke-width="1"/><text x="${pad.l-6}" y="${y+3}" text-anchor="end" font-size="9" fill="#6E7E9B" font-family="JetBrains Mono">${Math.round((i/4)*max)}</text>`;}
+  rows.forEach((r,i)=>{
+    const cx=pad.l+step*i+step/2;
+    const ph=(r.posts/max)*ih, ch=(r.comments/max)*ih;
+    g+=`<rect x="${cx-bw-2}" y="${pad.t+ih-ph}" width="${bw}" height="${ph}" rx="3" fill="#4C8DF6"/>`;
+    g+=`<rect x="${cx+2}" y="${pad.t+ih-ch}" width="${bw}" height="${ch}" rx="3" fill="#2DD4A7"/>`;
+    g+=`<text x="${cx}" y="${h-12}" text-anchor="middle" font-size="10" fill="#A9B7CE" font-family="JetBrains Mono">${r.short}</text>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">${g}</svg>`;
+}
+
+// ---------- data ----------
+const accounts=[
+  {u:'MarketMaven_Al',s:'r/stocks · r/investing',karma:18420,dk:1240,posts:6,comments:47,emp:'Alex Rho',ec:'#2DD4A7',met:'met',prog:118,spk:[8,9,11,10,13,12,15]},
+  {u:'DeepValueDiver',s:'r/ValueInvesting',karma:12630,dk:860,posts:4,comments:39,emp:'Alex Rho',ec:'#2DD4A7',met:'met',prog:98,spk:[6,7,7,9,8,11,12]},
+  {u:'TheTapeReader',s:'r/Daytrading',karma:9880,dk:-120,posts:2,comments:14,emp:'Priya Nandan',ec:'#8B7BF7',met:'miss',prog:35,spk:[7,6,6,5,5,4,4]},
+  {u:'DividendDrip_HQ',s:'r/dividends',karma:15240,dk:640,posts:5,comments:33,emp:'Priya Nandan',ec:'#8B7BF7',met:'near',prog:82,spk:[5,6,8,7,9,9,10]},
+  {u:'MacroMuseDaily',s:'r/economics',karma:7310,dk:410,posts:3,comments:28,emp:'Jordan Vale',ec:'#F5A623',met:'met',prog:104,spk:[3,4,5,5,6,7,8]},
+  {u:'SmallCapScout',s:'r/pennystocks',karma:5120,dk:-60,posts:1,comments:9,emp:'Jordan Vale',ec:'#F5A623',met:'miss',prog:28,spk:[5,5,4,4,3,3,3]},
+];
+const empName={ '#2DD4A7':'Alex Rho', '#8B7BF7':'Priya Nandan', '#F5A623':'Jordan Vale' };
+
+const posts=[
+  {t:'DD: Why the semiconductor supply chain is mispriced going into Q3',sub:'r/stocks',when:'2d ago',up:842,cm:126,acct:'MarketMaven_Al'},
+  {t:'A framework for valuing dividend aristocrats in a high-rate environment',sub:'r/dividends',when:'3d ago',up:410,cm:58,acct:'DividendDrip_HQ'},
+  {t:'Weekly macro thread — jobs report reaction & what it means',sub:'r/economics',when:'4d ago',up:233,cm:41,acct:'MacroMuseDaily'},
+  {t:'My checklist before entering any small-cap position',sub:'r/investing',when:'5d ago',up:198,cm:33,acct:'DeepValueDiver'},
+];
+const comments=[
+  {t:'The key thing people miss here is free cash flow conversion — revenue growth alone…',sub:'r/investing',when:'4h ago',up:64,cm:8,acct:'MarketMaven_Al'},
+  {t:'Agreed on the thesis, but I\u2019d watch the debt maturity wall in 2027 before…',sub:'r/ValueInvesting',when:'7h ago',up:41,cm:3,acct:'DeepValueDiver'},
+  {t:'Great breakdown. One correction on the payout ratio math though…',sub:'r/dividends',when:'1d ago',up:29,cm:5,acct:'DividendDrip_HQ'},
+  {t:'This is survivorship bias — the delisted names never show up in that backtest.',sub:'r/Daytrading',when:'1d ago',up:-6,cm:2,acct:'TheTapeReader'},
+];
+
+// ---------- role state ----------
+let role='admin';
+const roleMeta={
+  admin:{name:'Dana Mercer',init:'DM',label:'Super Admin',av:'#8B7BF7'},
+  marketing:{name:'Sam Okafor',init:'SO',label:'Marketing Lead',av:'#4C8DF6'},
+  employee:{name:'Alex Rho',init:'AR',label:'Reddit Manager',av:'#2DD4A7'},
+};
+let nav='overview';
+
+// ---------- icons ----------
+const I={
+  karma:'<svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"/></svg>',
+  post:'<svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v12H7l-3 3z"/></svg>',
+  cmt:'<svg viewBox="0 0 24 24" fill="none" stroke="#8B7BF7" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></svg>',
+  acct:'<svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21C7 17 3 13.5 3 9a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4.5-4 8-8 12z"/></svg>',
+  reply:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 17l-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>',
+};
+const pill=(m)=> m==='met'?`<span class="pill met">${I.check} On track</span>`
+  : m==='near'?`<span class="pill near">Near</span>`
+  : `<span class="pill miss">${I.x} Missed</span>`;
+const progColor=(p)=> p>=100?'var(--green)': p>=70?'var(--amber)':'var(--rose)';
+
+// ---------- renderers ----------
+function kpiCard(label,val,delta,dir,icon,spk,col){
+  return `<div class="card kpi">
+    <div class="kpi-top"><span class="kpi-label">${label}</span><span class="kpi-ico">${icon}</span></div>
+    <div class="kpi-val">${val}</div>
+    <div class="kpi-delta ${dir}">${dir==='up'?I.up:I.down}${delta}</div>
+    <div class="kpi-spark">${spark(spk,col)}</div>
+  </div>`;
+}
+
+function accountsTable(list,showEmp){
+  return `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Account</th><th>Primary subreddits</th>${showEmp?'<th>Managed by</th>':''}
+      <th>Karma Δ (wk)</th><th>Posts</th><th>Comments</th><th>Quota</th><th>Status</th>
+    </tr></thead><tbody>
+    ${list.map((a,i)=>`<tr>
+      <td><div class="acct">${av(a.u.slice(0,2).toUpperCase(),a.ec)}<div><b>${a.u}</b><br><span>${(a.karma).toLocaleString()} karma</span></div></div></td>
+      <td><span class="subs">${a.s}</span></td>
+      ${showEmp?`<td>${a.emp}</td>`:''}
+      <td class="num" style="color:${a.dk>=0?'var(--green)':'var(--rose)'}">${a.dk>=0?'+':''}${a.dk.toLocaleString()}</td>
+      <td class="num">${a.posts}</td>
+      <td class="num">${a.comments}</td>
+      <td><div class="prog"><i style="width:${Math.min(100,a.prog)}%;background:${progColor(a.prog)}"></i></div><span class="num" style="font-size:11px;color:var(--ink-3)">${a.prog}%</span></td>
+      <td>${pill(a.met)}</td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function historyList(items,type){
+  return `<div class="card" style="padding:4px 0">
+    ${items.map(it=>`<div class="hist-item">
+      <div class="hist-ico">${type==='post'?I.post:I.cmt}</div>
+      <div class="hist-body">
+        <div class="hist-title">${it.t}</div>
+        <div class="hist-meta"><span class="subs">${it.sub}</span><span>${it.acct}</span><span>${it.when}</span></div>
+      </div>
+      <div class="hist-eng">
+        <span class="eng ${it.up>=0?'pos':''}">${it.up>=0?I.up:I.down}${Math.abs(it.up)}</span>
+        <span class="eng">${I.reply}${it.cm}</span>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+// ---- Overview (admin / marketing) ----
+function viewOverviewMgr(){
+  const totalKarma=accounts.reduce((s,a)=>s+a.dk,0);
+  const totalPosts=accounts.reduce((s,a)=>s+a.posts,0);
+  const totalCmt=accounts.reduce((s,a)=>s+a.comments,0);
+  const barRows=accounts.map(a=>({short:a.u.slice(0,4),posts:a.posts,comments:a.comments}));
+  return `
+  <div class="kpi-grid">
+    ${kpiCard('Net karma gained','+'+totalKarma.toLocaleString(),'8.2% vs last wk','up',I.karma,[12,14,13,16,15,18,20],'#2DD4A7')}
+    ${kpiCard('Posts this week',totalPosts,'3 more','up',I.post,[4,5,6,5,7,6,7],'#4C8DF6')}
+    ${kpiCard('Comments this week',totalCmt,'11 more','up',I.cmt,[9,11,10,13,12,14,15],'#8B7BF7')}
+    ${kpiCard('Accounts on track','4 / 6','2 missed','down',I.acct,[6,6,5,5,4,4,4],'#F5A623')}
+  </div>
+
+  <div class="two-col">
+    <div class="card chart-panel">
+      <div class="chart-head">
+        <span class="chart-title">Posts vs. comments by account</span>
+        <span class="legend"><span><i style="background:#4C8DF6"></i>Posts</span><span><i style="background:#2DD4A7"></i>Comments</span></span>
+      </div>
+      ${barChart(barRows)}
+    </div>
+    <div class="card chart-panel">
+      <div class="chart-head"><span class="chart-title">Team karma trend</span><span class="legend">Last 7 captures</span></div>
+      <div style="padding:14px 4px 8px">
+        ${['Alex Rho','Priya Nandan','Jordan Vale'].map((n,i)=>`
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+            <div style="flex:none;width:90px;font-size:12px;color:var(--ink-2)">${n}</div>
+            <div style="flex:1">${spark([8,9,9,11,10,12,13].map(v=>v+i*2*(i===1?-1:1)+Math.round(Math.random()*2)),colors[i],200,30)}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <div><h2>Managed accounts</h2><div class="sub">${accounts.length} accounts · showing week of Jul 6 – Jul 12</div></div>
+    <a class="link">View all accounts ${I.arrow}</a>
+  </div>
+  ${accountsTable(accounts,true)}
+
+  <div class="note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Karma and vote figures are captured on a schedule and reflect Reddit's slightly fuzzed counts — reliable for trends and effort verification, not exact accounting.
+  </div>`;
+}
+
+// ---- Employee view (scoped) ----
+function viewOverviewEmp(){
+  const mine=accounts.filter(a=>a.emp==='Alex Rho');
+  const dk=mine.reduce((s,a)=>s+a.dk,0);
+  const tp=mine.reduce((s,a)=>s+a.posts,0);
+  const tc=mine.reduce((s,a)=>s+a.comments,0);
+  return `
+  <div class="focus-banner">
+    <div class="big">AR</div>
+    <div>
+      <h3>Nice work this week, Alex</h3>
+      <p>Both of your accounts are on track. You're at 108% of your combined comment target.</p>
+    </div>
+    <div class="focus-stat"><div class="n" style="color:var(--green)">108%</div><div class="l">weekly target</div></div>
+  </div>
+
+  <div class="kpi-grid">
+    ${kpiCard('My karma gained','+'+dk.toLocaleString(),'6.4% vs last wk','up',I.karma,[9,10,11,12,13,14,16],'#2DD4A7')}
+    ${kpiCard('My posts','+'+tp,'target 8','up',I.post,[3,4,4,5,5,5,6],'#4C8DF6')}
+    ${kpiCard('My comments',tc,'target 80','up',I.cmt,[10,11,12,12,14,15,16],'#8B7BF7')}
+    ${kpiCard('Accounts assigned',mine.length,'both active','up',I.acct,[2,2,2,2,2,2,2],'#F5A623')}
+  </div>
+
+  <div class="section-head"><div><h2>My accounts</h2><div class="sub">You can only see the accounts assigned to you</div></div></div>
+  ${accountsTable(mine,false)}
+
+  <div class="section-head"><div><h2>My recent posts</h2></div><a class="link">Full post history ${I.arrow}</a></div>
+  ${historyList(posts.filter(p=>mine.some(m=>m.u===p.acct)).concat(posts.slice(0,1)),'post')}
+  `;
+}
+
+function viewAccounts(){
+  const list = role==='employee' ? accounts.filter(a=>a.emp==='Alex Rho') : accounts;
+  return `<div class="section-head"><div><h2>${role==='employee'?'My accounts':'All accounts'}</h2><div class="sub">${list.length} accounts</div></div>${role!=='employee'?'<a class="link">+ Connect account</a>':''}</div>${accountsTable(list,role!=='employee')}`;
+}
+
+function viewHistory(){
+  return `
+  <div class="section-head"><div><h2>Open post history</h2><div class="sub">Every post, its subreddit, and engagement</div></div></div>
+  ${historyList(posts,'post')}
+  <div class="section-head" style="margin-top:26px"><div><h2>Open comment history</h2><div class="sub">Every comment, its subreddit, and engagement</div></div></div>
+  ${historyList(comments,'cmt')}`;
+}
+
+function viewQuotas(){
+  const rows=[
+    {who:'Alex Rho',metric:'Comments / week',target:80,actual:86,per:'account group'},
+    {who:'Alex Rho',metric:'Posts / week',target:8,actual:10,per:'account group'},
+    {who:'Priya Nandan',metric:'Comments / week',target:80,actual:47,per:'account group'},
+    {who:'Priya Nandan',metric:'Posts / week',target:8,actual:7,per:'account group'},
+    {who:'Jordan Vale',metric:'Comments / week',target:60,actual:37,per:'account group'},
+  ];
+  return `<div class="section-head"><div><h2>Targets & quotas</h2><div class="sub">Weekly output goals per team member</div></div><a class="link">+ New quota</a></div>
+  <div class="table-wrap"><table><thead><tr><th>Team member</th><th>Metric</th><th>Target</th><th>Actual</th><th>Progress</th><th>Status</th></tr></thead><tbody>
+  ${rows.map(r=>{const p=Math.round(r.actual/r.target*100);return `<tr>
+    <td><b style="color:var(--ink)">${r.who}</b></td><td>${r.metric}</td>
+    <td class="num">${r.target}</td><td class="num">${r.actual}</td>
+    <td><div class="prog"><i style="width:${Math.min(100,p)}%;background:${progColor(p)}"></i></div></td>
+    <td>${pill(p>=100?'met':p>=80?'near':'miss')}</td></tr>`}).join('')}
+  </tbody></table></div>`;
+}
+
+function viewPayroll(){
+  const rows=[
+    {who:'Alex Rho',acc:2,posts:10,cmt:86,karma:2100,quota:'2 / 2 met',pay:'Full',ok:true},
+    {who:'Priya Nandan',acc:2,posts:7,cmt:47,karma:520,quota:'0 / 2 met',pay:'Flagged',ok:false},
+    {who:'Jordan Vale',acc:2,posts:4,cmt:37,karma:350,quota:'1 / 2 met',pay:'Partial',ok:false},
+  ];
+  return `<div class="section-head"><div><h2>Payroll report</h2><div class="sub">Week of Jul 6 – Jul 12 · export-ready</div></div><a class="link">Export CSV ${I.arrow}</a></div>
+  <div class="table-wrap"><table><thead><tr><th>Team member</th><th>Accounts</th><th>Posts</th><th>Comments</th><th>Karma Δ</th><th>Quota met</th><th>Payroll flag</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr>
+    <td><div class="acct">${av(r.who.split(' ').map(n=>n[0]).join(''),empName['#2DD4A7']===r.who?'#2DD4A7':empName['#8B7BF7']===r.who?'#8B7BF7':'#F5A623')}<b>${r.who}</b></div></td>
+    <td class="num">${r.acc}</td><td class="num">${r.posts}</td><td class="num">${r.cmt}</td>
+    <td class="num" style="color:var(--green)">+${r.karma.toLocaleString()}</td>
+    <td class="num">${r.quota}</td>
+    <td>${r.ok?'<span class="pill met">'+I.check+' Cleared</span>':'<span class="pill miss">'+I.x+' Review</span>'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>
+  <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  Flags are decision-support only. Managers review flagged rows before finalizing payroll.</div>`;
+}
+
+function viewTeam(){
+  const team=[
+    {n:'Dana Mercer',r:'Super Admin',av:'#8B7BF7',acc:'—',last:'Active now'},
+    {n:'Sam Okafor',r:'Marketing Lead',av:'#4C8DF6',acc:'All',last:'2h ago'},
+    {n:'Alex Rho',r:'Reddit Manager',av:'#2DD4A7',acc:'2 accounts',last:'20m ago'},
+    {n:'Priya Nandan',r:'Reddit Manager',av:'#8B7BF7',acc:'2 accounts',last:'1h ago'},
+    {n:'Jordan Vale',r:'Reddit Manager',av:'#F5A623',acc:'2 accounts',last:'5h ago'},
+  ];
+  return `<div class="section-head"><div><h2>Team & access</h2><div class="sub">Roles determine what each person can see and do</div></div><a class="link">+ Invite member</a></div>
+  <div class="table-wrap"><table><thead><tr><th>Member</th><th>Role</th><th>Assigned accounts</th><th>Last active</th><th></th></tr></thead><tbody>
+  ${team.map(t=>`<tr>
+    <td><div class="acct">${av(t.n.split(' ').map(x=>x[0]).join(''),t.av)}<b>${t.n}</b></div></td>
+    <td>${t.r}</td><td>${t.acc}</td><td style="color:var(--ink-3)">${t.last}</td>
+    <td><a class="link">Manage</a></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// ---------- router ----------
+const titles={overview:'Dashboard',accounts:'Accounts',history:'Activity History',quotas:'Targets & Quotas',payroll:'Payroll Reports',team:'Team & Access'};
+const crumbs={
+  overview:'Overview · Week of Jul 6 – Jul 12, 2026',
+  accounts:'Accounts · Week of Jul 6 – Jul 12',
+  history:'Post & comment history',
+  quotas:'Management · Weekly targets',
+  payroll:'Management · Week of Jul 6 – Jul 12',
+  team:'Administration · Access control',
+};
+function render(){
+  const c=$('#content');
+  let html='';
+  if(nav==='overview') html = role==='employee'?viewOverviewEmp():viewOverviewMgr();
+  else if(nav==='accounts') html=viewAccounts();
+  else if(nav==='history') html=viewHistory();
+  else if(nav==='quotas') html=viewQuotas();
+  else if(nav==='payroll') html=viewPayroll();
+  else if(nav==='team') html=viewTeam();
+  c.className='content fade'; c.innerHTML=html;
+  void c.offsetWidth; // restart animation
+  $('#pageTitle').textContent=titles[nav];
+  $('#pageCrumb').textContent=crumbs[nav];
+}
+
+function applyRole(){
+  const m=roleMeta[role];
+  $('#whoName').textContent=m.name;
+  $('#whoRole').textContent=m.label;
+  $('#whoAv').textContent=m.init;
+  $('#whoAv').style.background=`linear-gradient(135deg,${m.av},#5a4fb8)`;
+  // visibility of nav
+  $$('[data-mgr]').forEach(e=>e.classList.toggle('hidden', role==='employee'));
+  $$('[data-admin]').forEach(e=>e.classList.toggle('hidden', role!=='admin'));
+  // if employee lands on a hidden page, bounce to overview
+  if(role==='employee' && ['quotas','payroll','team'].includes(nav)) nav='overview';
+  if(role==='marketing' && nav==='team') nav='overview';
+  $$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.nav===nav));
+  render();
+}
+
+// ---------- events ----------
+$$('.role-seg button').forEach(b=>b.addEventListener('click',()=>{
+  $$('.role-seg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); role=b.dataset.role; applyRole();
+}));
+$$('.nav-item').forEach(n=>n.addEventListener('click',()=>{
+  nav=n.dataset.nav;
+  $$('.nav-item').forEach(x=>x.classList.remove('active'));
+  n.classList.add('active');
+  render();
+}));
+$$('.range-pills button').forEach(b=>b.addEventListener('click',()=>{
+  $$('.range-pills button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+}));
+
+applyRole();
+</script>
+</body>
+</html>
