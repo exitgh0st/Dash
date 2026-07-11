@@ -233,28 +233,47 @@ export class RedditService {
   /**
    * Validate that a Reddit account exists and report its health, via the shared
    * token. Called when a shiller adds an account by username.
-   * @returns the account's canonical username (correct casing from Reddit) and a
-   *   status: `suspended` if Reddit flags it, otherwise `active`.
+   * @returns the account's canonical username (correct casing from Reddit), a
+   *   status (`suspended` if Reddit flags it, otherwise `active`), and its current
+   *   total karma — the karma lets the caller seed a link-time trend baseline
+   *   without a second Reddit call (this is the same `/about` payload `getAccountStats`
+   *   reads).
    * @throws NotFoundException if no such account exists (Reddit 404).
    * @throws BadRequestException on any other lookup failure.
    */
-  async validateUsername(
-    username: string,
-  ): Promise<{ name: string; status: RedditAccountStatus }> {
+  async validateUsername(username: string): Promise<{
+    name: string;
+    status: RedditAccountStatus;
+    totalKarma: number;
+  }> {
     const accessToken = await this.getAccessToken();
     try {
       const { data } = await this.redditGet<{
-        data: { name: string; is_suspended?: boolean };
+        data: {
+          name: string;
+          is_suspended?: boolean;
+          total_karma?: number;
+          link_karma?: number;
+          comment_karma?: number;
+        };
       }>(
         `${REDDIT_API_BASE_URL}/user/${encodeURIComponent(username)}/about`,
         accessToken,
       );
 
+      const about = data.data;
+      // `total_karma` is the modern aggregate; fall back to link+comment for older
+      // payloads (same derivation as `getAccountStats`).
+      const totalKarma =
+        about.total_karma ??
+        (about.link_karma ?? 0) + (about.comment_karma ?? 0);
+
       return {
-        name: data.data.name,
-        status: data.data.is_suspended
+        name: about.name,
+        status: about.is_suspended
           ? RedditAccountStatus.suspended
           : RedditAccountStatus.active,
+        totalKarma,
       };
     } catch (err) {
       const status = isAxiosError(err) ? err.response?.status : undefined;
@@ -404,6 +423,90 @@ export class RedditService {
         `Reddit comment fetch failed: ${status ?? 'unknown error'}`,
       );
       throw new BadRequestException('Failed to fetch the account comments.');
+    }
+  }
+
+  /**
+   * Count a Reddit account's posts (submissions) within a date range, via the
+   * shared token. Powers the dashboard's weekly post-quota progress.
+   *
+   * Mirrors {@link getComments}' descending-listing crawl: pages `/submitted`
+   * via the `after` cursor until a submission older than `from` is seen (the
+   * listing is newest-first), the cursor runs out, or {@link MAX_COMMENT_PAGES}
+   * is reached. Only the count is returned — post bodies aren't rendered anywhere
+   * yet, so we don't project them.
+   *
+   * @param username the Reddit account (canonical casing).
+   * @param range ISO-8601 `from`/`to` bounds (inclusive); `from` is required for
+   *   a meaningful weekly count — without it only the newest page is counted.
+   * @throws NotFoundException if the account no longer exists (Reddit 404).
+   * @throws BadRequestException on any other fetch failure.
+   */
+  async getWeeklyPostCount(
+    username: string,
+    range: { from?: string; to?: string } = {},
+  ): Promise<number> {
+    const accessToken = await this.getAccessToken();
+    const fromMs = range.from ? new Date(range.from).getTime() : undefined;
+    const toMs = range.to ? new Date(range.to).getTime() : undefined;
+
+    let count = 0;
+    let after: string | null = null;
+    let page = 0;
+    // Set once we page past the lower bound, to stop the descending crawl.
+    let crossedFrom = false;
+
+    try {
+      do {
+        const url = new URL(
+          `${REDDIT_API_BASE_URL}/user/${encodeURIComponent(username)}/submitted`,
+        );
+        url.searchParams.set('limit', String(COMMENTS_PAGE_LIMIT));
+        url.searchParams.set('raw_json', '1');
+        if (after) {
+          url.searchParams.set('after', after);
+        }
+
+        const { data } = await this.redditGet<RedditListing>(
+          url.toString(),
+          accessToken,
+        );
+        const children = data.data.children ?? [];
+
+        for (const child of children) {
+          const createdMs = child.data.created_utc * 1000;
+          // Upper bound: skip anything newer than `to` (can occur on page 1).
+          if (toMs !== undefined && createdMs > toMs) {
+            continue;
+          }
+          // Lower bound: descending listing, so the first post older than `from`
+          // means every later one is too — stop here.
+          if (fromMs !== undefined && createdMs < fromMs) {
+            crossedFrom = true;
+            break;
+          }
+          count += 1;
+        }
+
+        after = data.data.after;
+        page += 1;
+      } while (
+        fromMs !== undefined &&
+        !crossedFrom &&
+        after &&
+        page < MAX_COMMENT_PAGES
+      );
+
+      return count;
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 404) {
+        throw new NotFoundException(`Reddit user u/${username} not found.`);
+      }
+      this.logger.warn(
+        `Reddit post fetch failed: ${status ?? 'unknown error'}`,
+      );
+      throw new BadRequestException('Failed to fetch the account posts.');
     }
   }
 }

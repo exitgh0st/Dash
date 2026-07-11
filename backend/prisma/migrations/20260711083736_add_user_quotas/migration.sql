@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "weeklyCommentQuota" INTEGER NOT NULL DEFAULT 50,
+ADD COLUMN     "weeklyPostQuota" INTEGER NOT NULL DEFAULT 5;

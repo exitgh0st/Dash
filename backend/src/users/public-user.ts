@@ -8,6 +8,10 @@ export interface PublicUser {
   id: string;
   email: string;
   role: User['role'];
+  /** Per-account weekly comment target; the admin edit dialog prefills from it. */
+  weeklyCommentQuota: number;
+  /** Per-account weekly post target; the admin edit dialog prefills from it. */
+  weeklyPostQuota: number;
   createdAt: Date;
   updatedAt: Date;
   /** Number of Reddit accounts the user owns. Only set on the admin list. */
@@ -28,6 +32,8 @@ export function toPublicUser(
     id: user.id,
     email: user.email,
     role: user.role,
+    weeklyCommentQuota: user.weeklyCommentQuota,
+    weeklyPostQuota: user.weeklyPostQuota,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     ...(redditAccountCount === undefined ? {} : { redditAccountCount }),

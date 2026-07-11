@@ -31,6 +31,11 @@ model User {
   email          String          @unique
   passwordHash   String
   role           UserRole        @default(shiller)
+  // Weekly quota targets, interpreted per owned Reddit account: each of a
+  // shiller's accounts is expected to hit these comment/post counts each week.
+  // The dashboard sums them across in-scope accounts to show quota progress.
+  weeklyCommentQuota Int         @default(50)
+  weeklyPostQuota    Int         @default(5)
   redditAccounts RedditAccount[]
   refreshTokens  RefreshToken[]
   createdAt      DateTime        @default(now())
@@ -63,9 +68,28 @@ model RedditAccount {
   redditUsername String
   status         RedditAccountStatus @default(active)
   lastCheckedAt  DateTime?
+  karmaSnapshots KarmaSnapshot[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
   // One entry per (shiller, reddit account) — prevents tracking duplicates.
   @@unique([userId, redditUsername])
+}
+
+/// A weekly karma baseline for a tracked account, powering the karma-trend
+/// (this-week vs last-week) comparison. Karma is otherwise read live and never
+/// stored; this table captures one immutable value per account per week — the
+/// first karma seen that week (≈ the week-start baseline), written through on
+/// dashboard load. Diffing consecutive weeks' baselines yields weekly karma gain.
+model KarmaSnapshot {
+  id         String        @id @default(uuid())
+  accountId  String
+  account    RedditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  weekStart  DateTime // Monday 00:00 (local) of the captured week
+  karma      Int
+  capturedAt DateTime      @default(now())
+
+  // One baseline per (account, week); the write-through upsert relies on this.
+  @@unique([accountId, weekStart])
+  @@index([accountId])
 }

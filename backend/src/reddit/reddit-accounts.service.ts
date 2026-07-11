@@ -26,9 +26,16 @@ export interface AccountComments {
   comments: RedditComment[];
 }
 
-/** A RedditAccount joined with just its owner's email (for admin dashboard rows). */
+/**
+ * A RedditAccount joined with its owner's email (for admin dashboard rows) and
+ * per-account weekly quotas (summed into the dashboard's quota targets).
+ */
 type AccountWithOwner = Prisma.RedditAccountGetPayload<{
-  include: { user: { select: { email: true } } };
+  include: {
+    user: {
+      select: { email: true; weeklyCommentQuota: true; weeklyPostQuota: true };
+    };
+  };
 }>;
 
 /** Monday 00:00:00.000 (local) of the week containing `date`. */
@@ -113,36 +120,118 @@ export class RedditAccountsService {
     const accounts = await this.prisma.redditAccount.findMany({
       where: isAdmin ? {} : { userId: requester.userId },
       orderBy: { createdAt: 'asc' },
-      include: { user: { select: { email: true } } },
+      include: {
+        user: {
+          select: {
+            email: true,
+            weeklyCommentQuota: true,
+            weeklyPostQuota: true,
+          },
+        },
+      },
     });
+
+    // Karma-trend baselines are anchored to the *current* week regardless of the
+    // viewed range, so viewing "last week" still records this week's baseline.
+    const thisWeekStart = startOfWeek(new Date());
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const baselines = await this.loadKarmaBaselines(
+      accounts.map((a) => a.id),
+      thisWeekStart,
+      lastWeekStart,
+    );
 
     // Sequential (not Promise.all) so we lean on the shared 60/min throttle
     // rather than firing every account's calls at once.
     const rows: DashboardAccountRow[] = [];
     for (const account of accounts) {
-      rows.push(await this.buildDashboardRow(account, range, isAdmin));
+      rows.push(
+        await this.buildDashboardRow(account, range, isAdmin, {
+          thisWeekStart,
+          lastWeekStart,
+          baselineThisWeek:
+            baselines.get(this.baselineKey(account.id, thisWeekStart)) ?? null,
+          baselineLastWeek:
+            baselines.get(this.baselineKey(account.id, lastWeekStart)) ?? null,
+        }),
+      );
     }
 
     return {
       range,
       kpis: {
         weeklyComments: rows.reduce((sum, r) => sum + r.weeklyComments, 0),
+        weeklyPosts: rows.reduce((sum, r) => sum + r.weeklyPosts, 0),
         totalAccounts: rows.length,
         activeAccounts: rows.filter((r) => r.status === 'active').length,
         totalKarma: rows.reduce((sum, r) => sum + (r.karma ?? 0), 0),
+        karmaGainedThisWeek: rows.reduce(
+          (sum, r) => sum + (r.karmaThisWeek ?? 0),
+          0,
+        ),
+        // Quota targets are per-account: each account contributes its owner's
+        // weekly quota, so the target scales with how many accounts are in scope.
+        commentQuotaTarget: accounts.reduce(
+          (sum, a) => sum + a.user.weeklyCommentQuota,
+          0,
+        ),
+        postQuotaTarget: accounts.reduce(
+          (sum, a) => sum + a.user.weeklyPostQuota,
+          0,
+        ),
       },
       accounts: rows,
     };
   }
 
   /**
+   * Batch-load the karma baselines for this week and last week across the given
+   * accounts in one query, keyed by `accountId:weekStartMs` for O(1) lookup.
+   */
+  private async loadKarmaBaselines(
+    accountIds: string[],
+    thisWeekStart: Date,
+    lastWeekStart: Date,
+  ): Promise<Map<string, number>> {
+    const snapshots = await this.prisma.karmaSnapshot.findMany({
+      where: {
+        accountId: { in: accountIds },
+        weekStart: { in: [thisWeekStart, lastWeekStart] },
+      },
+      select: { accountId: true, weekStart: true, karma: true },
+    });
+    const map = new Map<string, number>();
+    for (const s of snapshots) {
+      map.set(this.baselineKey(s.accountId, s.weekStart), s.karma);
+    }
+    return map;
+  }
+
+  /** Composite map key for a (account, week) karma baseline. */
+  private baselineKey(accountId: string, weekStart: Date): string {
+    return `${accountId}:${weekStart.getTime()}`;
+  }
+
+  /**
    * Fetch one account's weekly comment count + current karma/status, stamping
-   * `lastCheckedAt`. Isolated so one bad account can't fail the whole dashboard.
+   * `lastCheckedAt` and capturing/using its karma-trend baselines. Isolated so
+   * one bad account can't fail the whole dashboard.
+   *
+   * @param baselines pre-fetched karma baselines for this/last week (from
+   *   `loadKarmaBaselines`) plus the week-start dates used for the write-through
+   *   snapshot.
    */
   private async buildDashboardRow(
     account: AccountWithOwner,
     range: DashboardRange,
     isAdmin: boolean,
+    baselines: {
+      thisWeekStart: Date;
+      lastWeekStart: Date;
+      baselineThisWeek: number | null;
+      baselineLastWeek: number | null;
+    },
   ): Promise<DashboardAccountRow> {
     const base = {
       id: account.id,
@@ -155,6 +244,12 @@ export class RedditAccountsService {
         from: range.from,
         to: range.to,
       });
+      // Second Reddit read for the post-quota metric — throttled globally with
+      // the comment read via the shared 60/min gate, so it's just slower, not unsafe.
+      const weeklyPosts = await this.reddit.getWeeklyPostCount(
+        account.redditUsername,
+        { from: range.from, to: range.to },
+      );
       const stats = await this.reddit.getAccountStats(account.redditUsername);
 
       // Real poll of the account — persist freshness + latest known status.
@@ -163,12 +258,39 @@ export class RedditAccountsService {
         data: { lastCheckedAt: new Date(), status: stats.status },
       });
 
+      // Write-through, create-only: the first karma seen this week becomes an
+      // immutable baseline (≈ week-start karma). The empty `update` keeps it
+      // frozen on later loads the same week.
+      await this.prisma.karmaSnapshot.upsert({
+        where: {
+          accountId_weekStart: {
+            accountId: account.id,
+            weekStart: baselines.thisWeekStart,
+          },
+        },
+        create: {
+          accountId: account.id,
+          weekStart: baselines.thisWeekStart,
+          karma: stats.totalKarma,
+        },
+        update: {},
+      });
+
+      const { karmaThisWeek, karmaLastWeek } = this.computeKarmaTrend(
+        stats.totalKarma,
+        baselines.baselineThisWeek,
+        baselines.baselineLastWeek,
+      );
+
       return {
         ...base,
         status: stats.status,
         lastCheckedAt: updated.lastCheckedAt?.toISOString() ?? null,
         weeklyComments: comments.length,
+        weeklyPosts,
         karma: stats.totalKarma,
+        karmaThisWeek,
+        karmaLastWeek,
       };
     } catch (err) {
       // Reason: a deleted/suspended account or a transient Reddit failure must
@@ -183,8 +305,63 @@ export class RedditAccountsService {
         status: RedditAccountStatus.error,
         lastCheckedAt: account.lastCheckedAt?.toISOString() ?? null,
         weeklyComments: 0,
+        weeklyPosts: 0,
         karma: null,
+        karmaThisWeek: null,
+        karmaLastWeek: null,
       };
+    }
+  }
+
+  /**
+   * Derive the karma-trend figures from live karma + the two weekly baselines.
+   *
+   * - `karmaThisWeek` = live − this-week baseline. On the first load of the week
+   *   the baseline was just created (= live), so this reads 0 and grows as the
+   *   week progresses.
+   * - `karmaLastWeek` = this-week baseline − last-week baseline, but only when
+   *   *both* baselines already existed before this request. Until then it stays
+   *   null (the "collecting data" state), which needs ~2 weeks of usage.
+   */
+  private computeKarmaTrend(
+    liveKarma: number,
+    baselineThisWeek: number | null,
+    baselineLastWeek: number | null,
+  ): { karmaThisWeek: number; karmaLastWeek: number | null } {
+    const effectiveThisWeek = baselineThisWeek ?? liveKarma;
+    return {
+      karmaThisWeek: liveKarma - effectiveThisWeek,
+      karmaLastWeek:
+        baselineThisWeek !== null && baselineLastWeek !== null
+          ? baselineThisWeek - baselineLastWeek
+          : null,
+    };
+  }
+
+  /**
+   * Best-effort: seed a create-only karma baseline for the current week when an
+   * account is linked, using the karma already fetched during validation (no extra
+   * Reddit call). A failure here must not fail the link — the account row is the
+   * important artifact and the dashboard write-through will still seed a baseline
+   * on first load — so we swallow and log.
+   */
+  private async captureLinkBaseline(
+    accountId: string,
+    karma: number,
+  ): Promise<void> {
+    try {
+      const weekStart = startOfWeek(new Date());
+      await this.prisma.karmaSnapshot.upsert({
+        where: { accountId_weekStart: { accountId, weekStart } },
+        create: { accountId, weekStart, karma },
+        update: {},
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to capture link-time karma baseline for account ${accountId}: ${
+          err instanceof Error ? err.message : 'unknown error'
+        }`,
+      );
     }
   }
 
@@ -207,13 +384,22 @@ export class RedditAccountsService {
     // Accept "u/name", "/u/name", or "name" and trim surrounding whitespace.
     const normalized = redditUsername.trim().replace(/^\/?u\//i, '');
 
-    // Resolve canonical casing + current health from Reddit before persisting.
-    const { name, status } = await this.reddit.validateUsername(normalized);
+    // Resolve canonical casing + current health/karma from Reddit before persisting.
+    const { name, status, totalKarma } =
+      await this.reddit.validateUsername(normalized);
 
     try {
       const account = await this.prisma.redditAccount.create({
         data: { userId, redditUsername: name, status },
       });
+
+      // Seed a karma-trend baseline at link time so this week's gain is measured
+      // from the moment tracking begins — not from the first dashboard load, which
+      // could be days later and would silently miss the interim gains. Same
+      // create-only semantics as the dashboard write-through, so whichever runs
+      // first freezes the immutable weekly baseline.
+      await this.captureLinkBaseline(account.id, totalKarma);
+
       return toPublicRedditAccount(account);
     } catch (err) {
       // P2002 = unique constraint violation → the shiller already tracks it.
