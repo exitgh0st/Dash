@@ -27,9 +27,17 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
-  /** List all users, oldest first (admin listing). */
-  async findAll(): Promise<User[]> {
-    return this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+  /**
+   * List all users, oldest first (admin listing), each with a count of the
+   * Reddit accounts they own. The count is a cheap DB aggregate — no Reddit call.
+   */
+  async findAll(): Promise<
+    Array<User & { _count: { redditAccounts: number } }>
+  > {
+    return this.prisma.user.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { _count: { select: { redditAccounts: true } } },
+    });
   }
 
   /**

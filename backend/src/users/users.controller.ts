@@ -23,11 +23,11 @@ export class UsersController {
     return toPublicUser(user);
   }
 
-  /** Admin lists all Dash users (no password hashes). */
+  /** Admin lists all Dash users (no password hashes), each with an account count. */
   @Get()
   @Roles('admin')
   async findAll(): Promise<PublicUser[]> {
     const users = await this.usersService.findAll();
-    return users.map(toPublicUser);
+    return users.map((u) => toPublicUser(u, u._count.redditAccounts));
   }
 }
