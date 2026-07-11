@@ -53,19 +53,19 @@ model RefreshToken {
   @@index([userId])
 }
 
-/// A Reddit account linked by a shiller via OAuth. The refresh token is stored
-/// encrypted at rest and is never logged or returned to the client.
+/// A Reddit account a shiller tracks, identified by public username only. Comment
+/// history is public, so Dash reads it with one shared service token (see
+/// RedditService) rather than a per-account OAuth grant — no token is stored here.
 model RedditAccount {
-  id                    String              @id @default(uuid())
-  userId                String
-  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  redditUsername        String
-  refreshTokenEncrypted String // AES-256-GCM ciphertext; never logged, never returned to client
-  status                RedditAccountStatus @default(active)
-  lastCheckedAt         DateTime?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  id             String              @id @default(uuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redditUsername String
+  status         RedditAccountStatus @default(active)
+  lastCheckedAt  DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
-  // One link per (shiller, reddit account) — prevents duplicate links.
+  // One entry per (shiller, reddit account) — prevents tracking duplicates.
   @@unique([userId, redditUsername])
 }
