@@ -27,3 +27,12 @@
 .login-submit {
   margin-top: 0.5rem;
 }
+
+.login-submit:not(:disabled) {
+  // Reason: match the dashboard brand mark instead of Material's stock green.
+  --mdc-filled-button-container-color: var(--green);
+  --mdc-filled-button-label-text-color: #062018;
+
+  background: linear-gradient(135deg, var(--green), #1fa588);
+  box-shadow: 0 4px 14px rgba(45, 212, 167, 0.28);
+}
