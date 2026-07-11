@@ -138,6 +138,23 @@ body {
   color: var(--ink-3);
   margin-top: 6px;
 }
+// Exactly four cards on one row (comments, karma, comment-quota, post-quota).
+.kpi-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+// Muted "/ target" suffix beside the live quota count in the kpi value.
+.kpi-target {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+// Quota progress bar tinted with the semantic quota-met green; caps at 100%.
+.quota-bar {
+  margin-top: 12px;
+  border-radius: 999px;
+  --mdc-linear-progress-active-indicator-color: var(--green);
+  --mdc-linear-progress-track-color: var(--panel-2);
+}
 
 // ---- Section headers ----
 .section-head {

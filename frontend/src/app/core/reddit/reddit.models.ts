@@ -51,8 +51,14 @@ export interface DashboardAccountRow {
   status: RedditAccountStatus;
   lastCheckedAt: string | null;
   weeklyComments: number;
+  /** Posts (submissions) made this week; 0 when the account errored. */
+  weeklyPosts: number;
   /** Current total karma, or null when the account errored. */
   karma: number | null;
+  /** Karma gained so far this week (live − this-week baseline); null if errored. */
+  karmaThisWeek: number | null;
+  /** Karma gained last week; null until two consecutive weekly baselines exist. */
+  karmaLastWeek: number | null;
   /** Owning shiller's email — present for admins only. */
   ownerEmail?: string;
 }
@@ -60,9 +66,17 @@ export interface DashboardAccountRow {
 /** Aggregate figures across the in-scope accounts. */
 export interface DashboardKpis {
   weeklyComments: number;
+  /** Sum of posts made this week across in-scope accounts. */
+  weeklyPosts: number;
   totalAccounts: number;
   activeAccounts: number;
   totalKarma: number;
+  /** Sum of per-account karma gained so far this week. */
+  karmaGainedThisWeek: number;
+  /** Weekly comment-quota target, summed from each account's owner's quota. */
+  commentQuotaTarget: number;
+  /** Weekly post-quota target, summed from each account's owner's quota. */
+  postQuotaTarget: number;
 }
 
 /** Full payload of `GET /api/reddit/dashboard`. */

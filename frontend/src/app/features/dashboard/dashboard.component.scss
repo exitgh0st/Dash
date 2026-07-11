@@ -28,6 +28,35 @@
   background: var(--green);
 }
 
+// Two-swatch legend for the karma-trend chart (last-week blue + this-week green).
+.legend-2 {
+  gap: 4px;
+}
+.legend-2 .i-last {
+  background: #4c8df6;
+}
+.legend-2 .i-this {
+  background: var(--green);
+  margin-left: 8px;
+}
+
+// Karma Δ cell: green ▲ when this week meets/beats last week, orange ▼ when it trails.
+.delta {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.delta.up {
+  color: var(--green);
+}
+.delta.down {
+  color: var(--orange, #ff9800);
+}
+
+// Tighter variant of the shared `.note` for placing directly under a chart.
+.note-tight {
+  margin-top: 8px;
+}
+
 mat-progress-bar {
   margin-bottom: 8px;
 }

@@ -14,6 +14,10 @@ import {
   BarDatum,
   CommentsBarChartComponent,
 } from './comments-bar-chart.component';
+import {
+  KarmaTrendChartComponent,
+  KarmaTrendDatum,
+} from './karma-trend-chart.component';
 
 /** A recent comment tagged with the account it came from (shiller overview). */
 interface RecentComment {
@@ -46,7 +50,12 @@ const AVATAR_COLORS = [
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, MatProgressBarModule, CommentsBarChartComponent],
+  imports: [
+    RouterLink,
+    MatProgressBarModule,
+    CommentsBarChartComponent,
+    KarmaTrendChartComponent,
+  ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
@@ -70,9 +79,50 @@ export class DashboardComponent {
   readonly accounts = computed(() => this.summary()?.accounts ?? []);
   readonly rangeLabel = computed(() => this.summary()?.range.label ?? '');
 
+  /**
+   * Comment-quota fill for the progress bar: weekly comments over the aggregate
+   * target, clamped to [0,100]. The bar caps at 100% while the card label still
+   * shows the true (possibly over-quota) count. 0 when there's no target.
+   */
+  readonly commentQuotaPct = computed(() => {
+    const k = this.kpis();
+    if (!k || k.commentQuotaTarget <= 0) return 0;
+    return Math.min(100, (k.weeklyComments / k.commentQuotaTarget) * 100);
+  });
+
+  /** Post-quota fill for the progress bar; same clamping as {@link commentQuotaPct}. */
+  readonly postQuotaPct = computed(() => {
+    const k = this.kpis();
+    if (!k || k.postQuotaTarget <= 0) return 0;
+    return Math.min(100, (k.weeklyPosts / k.postQuotaTarget) * 100);
+  });
+
   /** Bar-chart series: comment count per in-scope account. */
   readonly chartData = computed<BarDatum[]>(() =>
     this.accounts().map((a) => ({ label: a.username, value: a.weeklyComments })),
+  );
+
+  /**
+   * Series for the karma-trend chart. `lastWeek` is left null (not coalesced to 0)
+   * so the chart can tell "no last-week data yet" apart from "last week gained 0"
+   * and draw a single this-week bar until a real comparison exists.
+   */
+  readonly karmaTrendData = computed<KarmaTrendDatum[]>(() =>
+    this.accounts().map((a) => ({
+      label: a.username,
+      thisWeek: a.karmaThisWeek ?? 0,
+      lastWeek: a.karmaLastWeek,
+    })),
+  );
+
+  /**
+   * True once at least one account has a this-week baseline (i.e. karma data to
+   * chart). Since a baseline is seeded at link time, this is effectively "has a
+   * healthy account" — the trend shows from week 1; the last-week bar fills in
+   * after a full week. The empty state only shows when nothing has a baseline yet.
+   */
+  readonly hasKarmaTrend = computed(() =>
+    this.accounts().some((a) => a.karmaThisWeek !== null),
   );
 
   /** First-name-ish greeting from the email local part (no display names stored). */
@@ -162,6 +212,28 @@ export class DashboardComponent {
   /** Pill style for a status: active reads as "met" (green), anything else "miss". */
   statusPill(status: RedditAccountStatus): 'met' | 'miss' {
     return status === 'active' ? 'met' : 'miss';
+  }
+
+  /** Whether an account has a karma Δ to show — true once a this-week baseline exists. */
+  hasTrend(row: DashboardAccountRow): boolean {
+    return row.karmaThisWeek !== null;
+  }
+
+  /**
+   * True when this week's karma gain meets or beats last week's (drives green/orange).
+   * With no last-week figure yet, reads as up (neutral/green) — we don't imply a
+   * down-trend against data we don't have.
+   */
+  trendUp(row: DashboardAccountRow): boolean {
+    if (row.karmaLastWeek === null) return true;
+    return (row.karmaThisWeek ?? 0) >= row.karmaLastWeek;
+  }
+
+  /** Signed karma-gain label for the Δ column, e.g. "+142" / "-30" / "0". */
+  fmtSigned(value: number | null): string {
+    if (value === null) return '—';
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${value.toLocaleString()}`;
   }
 
   /** Relative-ish "time ago" label for a comment timestamp. */

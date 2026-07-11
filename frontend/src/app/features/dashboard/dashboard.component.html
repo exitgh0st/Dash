@@ -24,7 +24,7 @@
   <div class="fade">
     <!-- ================= Admin (manager) view ================= -->
     @if (isAdmin()) {
-      <div class="kpi-grid">
+      <div class="kpi-grid kpi-grid-4">
         <div class="card kpi">
           <div class="kpi-top">
             <span class="kpi-label">Comments this week</span>
@@ -35,27 +35,35 @@
         </div>
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">Accounts tracked</span>
-            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg></span>
+            <span class="kpi-label">Karma this week</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmt(kpis()!.totalAccounts) }}</div>
-          <div class="kpi-sub">across all shillers</div>
+          <div class="kpi-val">{{ fmtSigned(kpis()!.karmaGainedThisWeek) }}</div>
+          <div class="kpi-sub">gained so far, all accounts</div>
         </div>
+        <!-- Comment quota: live count over the summed per-account target, bar caps at 100%. -->
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">Active accounts</span>
-            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5" /></svg></span>
+            <span class="kpi-label">Comment quota</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3 8-8" /><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmt(kpis()!.activeAccounts) }}</div>
-          <div class="kpi-sub">not banned / suspended / errored</div>
+          <div class="kpi-val">{{ fmt(kpis()!.weeklyComments) }}<span class="kpi-target"> / {{ fmt(kpis()!.commentQuotaTarget) }}</span></div>
+          @if (kpis()!.commentQuotaTarget > 0) {
+            <mat-progress-bar class="quota-bar" mode="determinate" [value]="commentQuotaPct()" />
+          }
+          <div class="kpi-sub">weekly target, all accounts</div>
         </div>
+        <!-- Post quota: real /submitted counts over the summed per-account target. -->
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">Total karma</span>
-            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z" /></svg></span>
+            <span class="kpi-label">Post quota</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v12H7l-3 3z" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmt(kpis()!.totalKarma) }}</div>
-          <div class="kpi-sub">current, summed across accounts</div>
+          <div class="kpi-val">{{ fmt(kpis()!.weeklyPosts) }}<span class="kpi-target"> / {{ fmt(kpis()!.postQuotaTarget) }}</span></div>
+          @if (kpis()!.postQuotaTarget > 0) {
+            <mat-progress-bar class="quota-bar" mode="determinate" [value]="postQuotaPct()" />
+          }
+          <div class="kpi-sub">weekly target, all accounts</div>
         </div>
       </div>
 
@@ -68,11 +76,22 @@
           <app-comments-bar-chart [data]="chartData()" />
         </div>
         <div class="card">
-          <div class="chart-head"><span class="chart-title">Karma trend</span></div>
-          <div class="empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg>
-            <p>Trends coming soon — weekly karma snapshots aren't captured yet.</p>
+          <div class="chart-head">
+            <span class="chart-title">Karma trend</span>
+            <span class="legend legend-2"><i class="i-last"></i>Last week<i class="i-this"></i>This week</span>
           </div>
+          @if (hasKarmaTrend()) {
+            <app-karma-trend-chart [data]="karmaTrendData()" />
+            <div class="note note-tight">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+              Karma per week, derived from Reddit's fuzzed totals — directional, not exact.
+            </div>
+          } @else {
+            <div class="empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg>
+              <p>No karma data yet — link an account to start tracking. This week's gain shows right away; the last-week comparison appears after a full week.</p>
+            </div>
+          }
         </div>
       </div>
 
@@ -92,6 +111,7 @@
               <th>Managed by</th>
               <th>Comments</th>
               <th>Karma</th>
+              <th>Δ this week</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -107,6 +127,16 @@
                 <td>{{ a.ownerEmail }}</td>
                 <td class="num">{{ a.weeklyComments }}</td>
                 <td class="num">{{ fmt(a.karma) }}</td>
+                <!-- Δ karma: this week's gain, arrow vs last week; "—" until a baseline exists. -->
+                <td class="num">
+                  @if (hasTrend(a)) {
+                    <span class="delta" [class.up]="trendUp(a)" [class.down]="!trendUp(a)">
+                      {{ trendUp(a) ? '▲' : '▼' }} {{ fmtSigned(a.karmaThisWeek) }}
+                    </span>
+                  } @else {
+                    <span class="sub">—</span>
+                  }
+                </td>
                 <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
               </tr>
             }
@@ -137,10 +167,10 @@
         </div>
       </div>
 
-      <div class="kpi-grid">
+      <div class="kpi-grid kpi-grid-4">
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">My comments</span>
+            <span class="kpi-label">Comments this week</span>
             <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#8B7BF7" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg></span>
           </div>
           <div class="kpi-val">{{ fmt(kpis()!.weeklyComments) }}</div>
@@ -148,27 +178,35 @@
         </div>
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">My accounts</span>
-            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg></span>
+            <span class="kpi-label">Karma this week</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmt(kpis()!.totalAccounts) }}</div>
-          <div class="kpi-sub">tracked by you</div>
+          <div class="kpi-val">{{ fmtSigned(kpis()!.karmaGainedThisWeek) }}</div>
+          <div class="kpi-sub">gained so far, your accounts</div>
         </div>
+        <!-- Comment quota: your live count over your summed per-account target. -->
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">Active</span>
-            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5" /></svg></span>
+            <span class="kpi-label">Comment quota</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3 8-8" /><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmt(kpis()!.activeAccounts) }}</div>
-          <div class="kpi-sub">of {{ kpis()!.totalAccounts }} healthy</div>
+          <div class="kpi-val">{{ fmt(kpis()!.weeklyComments) }}<span class="kpi-target"> / {{ fmt(kpis()!.commentQuotaTarget) }}</span></div>
+          @if (kpis()!.commentQuotaTarget > 0) {
+            <mat-progress-bar class="quota-bar" mode="determinate" [value]="commentQuotaPct()" />
+          }
+          <div class="kpi-sub">weekly target, your accounts</div>
         </div>
+        <!-- Post quota: real /submitted counts over your summed per-account target. -->
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">My karma</span>
-            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z" /></svg></span>
+            <span class="kpi-label">Post quota</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v12H7l-3 3z" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmt(kpis()!.totalKarma) }}</div>
-          <div class="kpi-sub">current total</div>
+          <div class="kpi-val">{{ fmt(kpis()!.weeklyPosts) }}<span class="kpi-target"> / {{ fmt(kpis()!.postQuotaTarget) }}</span></div>
+          @if (kpis()!.postQuotaTarget > 0) {
+            <mat-progress-bar class="quota-bar" mode="determinate" [value]="postQuotaPct()" />
+          }
+          <div class="kpi-sub">weekly target, your accounts</div>
         </div>
       </div>
 
@@ -187,6 +225,7 @@
               <th>Account</th>
               <th>Comments</th>
               <th>Karma</th>
+              <th>Δ this week</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -201,6 +240,16 @@
                 </td>
                 <td class="num">{{ a.weeklyComments }}</td>
                 <td class="num">{{ fmt(a.karma) }}</td>
+                <!-- Δ karma: this week's gain, arrow vs last week; "—" until a baseline exists. -->
+                <td class="num">
+                  @if (hasTrend(a)) {
+                    <span class="delta" [class.up]="trendUp(a)" [class.down]="!trendUp(a)">
+                      {{ trendUp(a) ? '▲' : '▼' }} {{ fmtSigned(a.karmaThisWeek) }}
+                    </span>
+                  } @else {
+                    <span class="sub">—</span>
+                  }
+                </td>
                 <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
               </tr>
             }
