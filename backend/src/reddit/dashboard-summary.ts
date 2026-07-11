@@ -1,0 +1,40 @@
+import { RedditAccountStatus } from '@prisma/client';
+
+/** Which week the dashboard summarizes. */
+export type DashboardRangeKey = 'this-week' | 'last-week';
+
+/** The resolved date window a summary covers, plus a human label for the topbar. */
+export interface DashboardRange {
+  from: string; // ISO-8601 inclusive lower bound
+  to: string; // ISO-8601 inclusive upper bound
+  label: string; // e.g. "Jul 6 – Jul 12, 2026"
+}
+
+/** One tracked account's metrics for the selected week. */
+export interface DashboardAccountRow {
+  id: string;
+  username: string;
+  status: RedditAccountStatus;
+  lastCheckedAt: string | null;
+  /** Comments posted within the range. 0 when the account errored. */
+  weeklyComments: number;
+  /** Current total karma from Reddit, or null when the account errored. */
+  karma: number | null;
+  /** Owning shiller's email — populated for admins only. */
+  ownerEmail?: string;
+}
+
+/** Aggregate figures across the in-scope accounts. */
+export interface DashboardKpis {
+  weeklyComments: number;
+  totalAccounts: number;
+  activeAccounts: number;
+  totalKarma: number;
+}
+
+/** Full payload of `GET /api/reddit/dashboard`. */
+export interface DashboardSummary {
+  range: DashboardRange;
+  kpis: DashboardKpis;
+  accounts: DashboardAccountRow[];
+}
