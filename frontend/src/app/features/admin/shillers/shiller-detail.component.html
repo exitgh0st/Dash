@@ -1,0 +1,57 @@
+<div class="detail-header">
+  <!-- Back to the shiller list. -->
+  <a mat-icon-button routerLink="/shillers" aria-label="Back to shillers">
+    <mat-icon>arrow_back</mat-icon>
+  </a>
+  <div class="detail-title">
+    <h1>Reddit accounts</h1>
+    @if (email()) {
+      <span class="detail-subtitle">{{ email() }}</span>
+    }
+  </div>
+</div>
+
+@if (loading()) {
+  <!-- Loading state -->
+  <div class="state-center">
+    <mat-progress-spinner mode="indeterminate" diameter="48" />
+  </div>
+} @else if (accounts().length === 0) {
+  <!-- Empty state -->
+  <mat-card class="empty-state" appearance="outlined">
+    <mat-card-content class="state-center">
+      <mat-icon class="empty-icon">link_off</mat-icon>
+      <p>This shiller isn't tracking any Reddit accounts yet.</p>
+    </mat-card-content>
+  </mat-card>
+} @else {
+  <!-- Populated state: each account links to its comments view (works down to 375px). -->
+  <div class="account-list">
+    @for (account of accounts(); track account.id) {
+      <mat-card
+        class="account-card clickable"
+        appearance="outlined"
+        [routerLink]="['/reddit-accounts', account.id, 'comments']"
+      >
+        <mat-card-content class="account-row">
+          <mat-icon class="account-avatar">account_circle</mat-icon>
+          <div class="account-info">
+            <span class="account-name">u/{{ account.redditUsername }}</span>
+            <span class="account-meta">
+              added {{ account.createdAt | date: 'mediumDate' }}
+            </span>
+          </div>
+          <!-- Status chip: green for active, red otherwise (semantic colors). -->
+          <span
+            class="status-chip"
+            [class.status-active]="account.status === 'active'"
+            [class.status-error]="account.status !== 'active'"
+          >
+            {{ account.status }}
+          </span>
+          <mat-icon class="chevron">chevron_right</mat-icon>
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+}

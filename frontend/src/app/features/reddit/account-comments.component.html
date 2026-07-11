@@ -1,0 +1,90 @@
+<div class="comments-header">
+  <a mat-icon-button (click)="goBack()" aria-label="Back">
+    <mat-icon>arrow_back</mat-icon>
+  </a>
+  <div class="comments-title">
+    <h1>
+      @if (username()) {
+        u/{{ username() }}
+      } @else {
+        Comments
+      }
+    </h1>
+    <!-- Live count of what's currently shown (reflects the active filter). -->
+    <span class="comments-subtitle">{{ count() }} comments</span>
+  </div>
+</div>
+
+<!-- Date-range filter: narrows to comments posted within the selected days. -->
+<form class="filter" [formGroup]="range">
+  <mat-form-field appearance="outline" class="filter-field">
+    <mat-label>Date range</mat-label>
+    <mat-date-range-input [rangePicker]="picker">
+      <input matStartDate formControlName="start" placeholder="Start" />
+      <input matEndDate formControlName="end" placeholder="End" />
+    </mat-date-range-input>
+    <mat-datepicker-toggle matIconSuffix [for]="picker" />
+    <mat-date-range-picker #picker />
+  </mat-form-field>
+  <div class="filter-actions">
+    <button
+      type="button"
+      mat-flat-button
+      color="primary"
+      [disabled]="loading()"
+      (click)="applyFilter()"
+    >
+      Apply
+    </button>
+    <button
+      type="button"
+      mat-stroked-button
+      [disabled]="loading()"
+      (click)="clearFilter()"
+    >
+      Clear
+    </button>
+  </div>
+</form>
+
+@if (loading()) {
+  <!-- Loading state -->
+  <div class="state-center">
+    <mat-progress-spinner mode="indeterminate" diameter="48" />
+  </div>
+} @else if (comments().length === 0) {
+  <!-- Empty state -->
+  <mat-card class="empty-state" appearance="outlined">
+    <mat-card-content class="state-center">
+      <mat-icon class="empty-icon">forum</mat-icon>
+      <p>No comments in this range.</p>
+    </mat-card-content>
+  </mat-card>
+} @else {
+  <!-- Populated state: newest-first list of comment cards (works down to 375px). -->
+  <div class="comment-list">
+    @for (comment of comments(); track comment.id) {
+      <mat-card class="comment-card" appearance="outlined">
+        <mat-card-content>
+          <div class="comment-meta">
+            <span class="subreddit">r/{{ comment.subreddit }}</span>
+            <span class="dot">·</span>
+            <span class="date">{{ comment.createdUtc | date: 'medium' }}</span>
+            <!-- Open the actual comment on reddit.com in a new tab. -->
+            <a
+              mat-icon-button
+              class="open-link"
+              [href]="comment.permalink"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open comment on Reddit"
+            >
+              <mat-icon>open_in_new</mat-icon>
+            </a>
+          </div>
+          <p class="comment-body">{{ comment.body }}</p>
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+}

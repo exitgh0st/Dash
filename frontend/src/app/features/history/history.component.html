@@ -1,0 +1,55 @@
+<div class="section-head">
+  <div>
+    <h2>Comment history</h2>
+    <div class="sub">Recent comments, their subreddit, and score</div>
+  </div>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (error()) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+    <p>Couldn't load comment history. Please try again.</p>
+  </div>
+} @else if (comments().length === 0) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg>
+    <p>No comments found for the tracked accounts.</p>
+  </div>
+} @else {
+  <div class="card fade" style="padding: 4px 0">
+    @for (c of comments(); track c.id) {
+      <a class="hist-item" [href]="c.permalink" target="_blank" rel="noopener" style="text-decoration: none">
+        <div class="hist-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg>
+        </div>
+        <div class="hist-body">
+          <div class="hist-title">{{ c.body }}</div>
+          <div class="hist-meta">
+            <span class="subs">r/{{ c.subreddit }}</span>
+            <span>u/{{ c.account }}</span>
+            <span>{{ timeAgo(c.createdUtc) }}</span>
+          </div>
+        </div>
+        <div class="hist-eng">
+          <span class="eng" [class.pos]="c.score >= 0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+            {{ c.score }}
+          </span>
+        </div>
+      </a>
+    }
+  </div>
+}
+
+<div class="section-head" style="margin-top: 26px">
+  <div>
+    <h2>Post history</h2>
+    <div class="sub">Every post, its subreddit, and engagement</div>
+  </div>
+</div>
+<div class="card empty">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v12H7l-3 3z" /></svg>
+  <p>Post history coming soon — Dash currently monitors comments only.</p>
+</div>

@@ -1,0 +1,8 @@
+// Stack the fields; the dialog itself caps width, so fields fill it on mobile.
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  min-width: min(320px, 80vw);
+}

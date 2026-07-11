@@ -1,21 +1,33 @@
-.state-center {
+:host {
+  display: block;
+}
+
+// Chart panel header (title + legend), used by the two dashboard chart cards.
+.chart-head {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 32px 16px;
-  text-align: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.chart-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.legend {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--green);
 }
 
-.empty-state {
-  max-width: 480px;
-  margin: 24px auto;
-}
-
-.empty-icon {
-  font-size: 48px;
-  width: 48px;
-  height: 48px;
-  opacity: 0.5;
+mat-progress-bar {
+  margin-bottom: 8px;
 }

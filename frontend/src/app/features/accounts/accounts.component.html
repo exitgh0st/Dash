@@ -1,0 +1,104 @@
+<div class="section-head">
+  <div>
+    <h2>{{ isAdmin() ? 'All accounts' : 'My accounts' }}</h2>
+    <div class="sub">
+      @if (isAdmin()) {
+        {{ adminRows().length }} account{{ adminRows().length === 1 ? '' : 's' }} across all shillers
+      } @else {
+        {{ myAccounts().length }} account{{ myAccounts().length === 1 ? '' : 's' }} tracked by you
+      }
+    </div>
+  </div>
+  <!-- Only shillers connect accounts; admins don't own Reddit accounts. -->
+  @if (!isAdmin()) {
+    <button type="button" class="link" [disabled]="adding()" (click)="openAddDialog()">
+      + Connect account
+    </button>
+  }
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (error()) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+    <p>Couldn't load accounts. Please try again.</p>
+  </div>
+} @else if (isAdmin()) {
+  <!-- ================= Admin: read-only, all accounts ================= -->
+  @if (adminRows().length === 0) {
+    <div class="card empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /></svg>
+      <p>No accounts are being tracked yet.</p>
+    </div>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Managed by</th>
+            <th>Comments</th>
+            <th>Karma</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (a of adminRows(); track a.id; let i = $index) {
+            <tr class="clickable" [routerLink]="['/reddit-accounts', a.id, 'comments']">
+              <td>
+                <div class="acct">
+                  <div class="a-av" [style.background]="avatarColor(i)">{{ initials(a.username) }}</div>
+                  <div><b>u/{{ a.username }}</b></div>
+                </div>
+              </td>
+              <td>{{ a.ownerEmail }}</td>
+              <td class="num">{{ a.weeklyComments }}</td>
+              <td class="num">{{ fmt(a.karma) }}</td>
+              <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+} @else {
+  <!-- ================= Shiller: own accounts + management ================= -->
+  @if (myAccounts().length === 0) {
+    <div class="card empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /></svg>
+      <p>No accounts yet. Connect a Reddit account to start tracking.</p>
+    </div>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Status</th>
+            <th>Added</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (a of myAccounts(); track a.id; let i = $index) {
+            <tr>
+              <td>
+                <div class="acct">
+                  <div class="a-av" [style.background]="avatarColor(i)">{{ initials(a.redditUsername) }}</div>
+                  <div><b>u/{{ a.redditUsername }}</b></div>
+                </div>
+              </td>
+              <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
+              <td>{{ a.createdAt | date: 'mediumDate' }}</td>
+              <td class="row-actions">
+                <a class="link" [routerLink]="['/reddit-accounts', a.id, 'comments']">Comments</a>
+                <button type="button" class="link danger" (click)="confirmUnlink(a)">Remove</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

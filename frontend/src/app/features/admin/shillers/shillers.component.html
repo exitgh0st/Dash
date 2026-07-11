@@ -1,0 +1,58 @@
+<div class="section-head">
+  <div>
+    <h2>Team &amp; Access</h2>
+    <div class="sub">Roles determine what each person can see and do</div>
+  </div>
+  <button type="button" class="link" (click)="openCreateDialog()">+ Invite member</button>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (error()) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+    <p>Couldn't load the team. Please try again.</p>
+  </div>
+} @else if (users$().length === 0) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg>
+    <p>No team members yet. Invite one to get started.</p>
+  </div>
+} @else {
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th>Role</th>
+          <th>Assigned accounts</th>
+          <th>Joined</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (user of users$(); track user.id; let i = $index) {
+          <tr>
+            <td>
+              <div class="acct">
+                <div class="a-av" [style.background]="avatarColor(i)">{{ initials(user.email) }}</div>
+                <div><b>{{ user.email }}</b></div>
+              </div>
+            </td>
+            <td>{{ roleLabel(user.role) }}</td>
+            <td class="num">{{ user.redditAccountCount ?? 0 }}</td>
+            <td>{{ user.createdAt | date: 'mediumDate' }}</td>
+            <td>
+              <!-- Only shillers have a Reddit-account drill-down; admins own none. -->
+              @if (user.role === 'shiller') {
+                <a class="link" [routerLink]="['/shillers', user.id]">Manage</a>
+              } @else {
+                <span class="sub">—</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

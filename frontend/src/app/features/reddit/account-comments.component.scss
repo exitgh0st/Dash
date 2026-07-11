@@ -1,0 +1,99 @@
+.comments-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.comments-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  h1 {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.comments-subtitle {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+// Filter row: form field + actions wrap onto their own lines at 375px.
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.filter-field {
+  flex: 1 1 260px;
+  // Trim the default subscript so the row isn't unnecessarily tall.
+  margin-bottom: -1.25em;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.state-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.empty-state {
+  max-width: 480px;
+  margin: 24px auto;
+}
+
+.empty-icon {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  opacity: 0.5;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.subreddit {
+  font-weight: 500;
+}
+
+.dot {
+  opacity: 0.5;
+}
+
+// Push the external-link button to the far end of the meta row.
+.open-link {
+  margin-left: auto;
+}
+
+.comment-body {
+  margin: 8px 0 0;
+  white-space: pre-wrap; // preserve line breaks within a comment
+  overflow-wrap: anywhere; // long unbroken strings/URLs don't overflow at 375px
+}

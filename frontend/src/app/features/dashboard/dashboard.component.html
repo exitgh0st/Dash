@@ -1,18 +1,255 @@
-<h1>Dashboard</h1>
-
 @if (loading()) {
-  <!-- Loading state -->
-  <div class="state-center">
-    <mat-progress-spinner mode="indeterminate" diameter="48" />
+  <mat-progress-bar mode="indeterminate" />
+} @else if (error()) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+    <p>Couldn't load the dashboard. Please try again.</p>
   </div>
-} @else if (items().length === 0) {
-  <!-- Empty state -->
-  <mat-card class="empty-state" appearance="outlined">
-    <mat-card-content class="state-center">
-      <mat-icon class="empty-icon">inbox</mat-icon>
-      <p>Nothing here yet. Linked Reddit accounts and quota status will appear here.</p>
-    </mat-card-content>
-  </mat-card>
+} @else if (accounts().length === 0) {
+  <div class="card empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /></svg>
+    <p>
+      No tracked accounts yet.
+      @if (isAdmin()) {
+        Shillers add their Reddit accounts from the Accounts page.
+      } @else {
+        Add a Reddit account to start tracking your weekly activity.
+      }
+    </p>
+    @if (!isAdmin()) {
+      <a class="link" routerLink="/accounts">Go to Accounts →</a>
+    }
+  </div>
 } @else {
-  <!-- Populated state (added when data exists). -->
+  <div class="fade">
+    <!-- ================= Admin (manager) view ================= -->
+    @if (isAdmin()) {
+      <div class="kpi-grid">
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Comments this week</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#8B7BF7" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.weeklyComments) }}</div>
+          <div class="kpi-sub">{{ rangeLabel() }}</div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Accounts tracked</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.totalAccounts) }}</div>
+          <div class="kpi-sub">across all shillers</div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Active accounts</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.activeAccounts) }}</div>
+          <div class="kpi-sub">not banned / suspended / errored</div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Total karma</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.totalKarma) }}</div>
+          <div class="kpi-sub">current, summed across accounts</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="chart-head">
+            <span class="chart-title">Comments by account</span>
+            <span class="legend"><i></i>Comments this week</span>
+          </div>
+          <app-comments-bar-chart [data]="chartData()" />
+        </div>
+        <div class="card">
+          <div class="chart-head"><span class="chart-title">Karma trend</span></div>
+          <div class="empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg>
+            <p>Trends coming soon — weekly karma snapshots aren't captured yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <div>
+          <h2>Managed accounts</h2>
+          <div class="sub">{{ accounts().length }} accounts · {{ rangeLabel() }}</div>
+        </div>
+        <a class="link" routerLink="/accounts">View all accounts →</a>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Managed by</th>
+              <th>Comments</th>
+              <th>Karma</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of accounts(); track a.id; let i = $index) {
+              <tr class="clickable" [routerLink]="['/reddit-accounts', a.id, 'comments']">
+                <td>
+                  <div class="acct">
+                    <div class="a-av" [style.background]="avatarColor(i)">{{ initials(a.username) }}</div>
+                    <div><b>u/{{ a.username }}</b></div>
+                  </div>
+                </td>
+                <td>{{ a.ownerEmail }}</td>
+                <td class="num">{{ a.weeklyComments }}</td>
+                <td class="num">{{ fmt(a.karma) }}</td>
+                <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+        Comment counts are read live from Reddit and reflect its slightly fuzzed
+        figures — reliable for effort verification, not exact accounting.
+      </div>
+    } @else {
+      <!-- ================= Shiller (employee) view ================= -->
+      <div class="focus-banner">
+        <div class="big">{{ initials(greeting()) }}</div>
+        <div>
+          <h3>Nice work this week, {{ greeting() }}</h3>
+          <p>
+            {{ kpis()!.weeklyComments }} comment{{ kpis()!.weeklyComments === 1 ? '' : 's' }}
+            across {{ kpis()!.totalAccounts }} account{{ kpis()!.totalAccounts === 1 ? '' : 's' }},
+            {{ rangeLabel() }}.
+          </p>
+        </div>
+        <div class="focus-stat">
+          <div class="n mono" style="color: var(--green)">{{ kpis()!.weeklyComments }}</div>
+          <div class="l">comments this week</div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">My comments</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#8B7BF7" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.weeklyComments) }}</div>
+          <div class="kpi-sub">{{ rangeLabel() }}</div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">My accounts</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#4C8DF6" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.totalAccounts) }}</div>
+          <div class="kpi-sub">tracked by you</div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Active</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.activeAccounts) }}</div>
+          <div class="kpi-sub">of {{ kpis()!.totalAccounts }} healthy</div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">My karma</span>
+            <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z" /></svg></span>
+          </div>
+          <div class="kpi-val">{{ fmt(kpis()!.totalKarma) }}</div>
+          <div class="kpi-sub">current total</div>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <div>
+          <h2>My accounts</h2>
+          <div class="sub">Only the accounts assigned to you</div>
+        </div>
+        <a class="link" routerLink="/accounts">Manage accounts →</a>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Comments</th>
+              <th>Karma</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of accounts(); track a.id; let i = $index) {
+              <tr class="clickable" [routerLink]="['/reddit-accounts', a.id, 'comments']">
+                <td>
+                  <div class="acct">
+                    <div class="a-av" [style.background]="avatarColor(i)">{{ initials(a.username) }}</div>
+                    <div><b>u/{{ a.username }}</b></div>
+                  </div>
+                </td>
+                <td class="num">{{ a.weeklyComments }}</td>
+                <td class="num">{{ fmt(a.karma) }}</td>
+                <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-head">
+        <div><h2>My recent comments</h2></div>
+        <a class="link" routerLink="/history">Full history →</a>
+      </div>
+      @if (recentLoading()) {
+        <mat-progress-bar mode="indeterminate" />
+      } @else if (recentComments().length === 0) {
+        <div class="card empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg>
+          <p>No recent comments found.</p>
+        </div>
+      } @else {
+        <div class="card" style="padding: 4px 0">
+          @for (c of recentComments(); track c.id) {
+            <a class="hist-item" [href]="c.permalink" target="_blank" rel="noopener" style="text-decoration: none">
+              <div class="hist-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg>
+              </div>
+              <div class="hist-body">
+                <div class="hist-title">{{ c.body }}</div>
+                <div class="hist-meta">
+                  <span class="subs">r/{{ c.subreddit }}</span>
+                  <span>u/{{ c.account }}</span>
+                  <span>{{ timeAgo(c.createdUtc) }}</span>
+                </div>
+              </div>
+              <div class="hist-eng">
+                <span class="eng" [class.pos]="c.score >= 0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                  {{ c.score }}
+                </span>
+              </div>
+            </a>
+          }
+        </div>
+      }
+
+      <div class="section-head"><div><h2>My recent posts</h2></div></div>
+      <div class="card empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v12H7l-3 3z" /></svg>
+        <p>Post tracking coming soon — Dash currently monitors comments only.</p>
+      </div>
+    }
+  </div>
 }

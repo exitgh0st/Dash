@@ -1,0 +1,21 @@
+:host {
+  display: block;
+}
+
+.row-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+// Destructive action reads in the rose accent instead of the green link color.
+.link.danger {
+  color: var(--rose);
+}
+
+// The header "+ Connect account" button is a .link styled as a button element.
+button.link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

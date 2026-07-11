@@ -8,6 +8,8 @@ export interface AuthUser {
   role: UserRole;
   createdAt: string;
   updatedAt: string;
+  /** Owned Reddit-account count — only present on the admin `/api/users` list. */
+  redditAccountCount?: number;
 }
 
 /** Payload returned by `/auth/login` and `/auth/refresh`. */
