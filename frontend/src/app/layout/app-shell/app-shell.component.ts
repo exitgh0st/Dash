@@ -102,6 +102,9 @@ export class AppShellComponent {
     if (url.startsWith('/team') || url.startsWith('/shillers')) {
       return { title: 'Team & Access', crumb: 'Roles & access control' };
     }
+    if (url.startsWith('/guide')) {
+      return { title: 'Guide', crumb: 'How Dash works' };
+    }
     return { title: 'Dashboard', crumb: 'Overview' };
   }
 

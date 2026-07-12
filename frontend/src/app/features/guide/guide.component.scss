@@ -1,0 +1,177 @@
+// Guide page — a readable prose layout built on the global "Signal." primitives.
+// Only guide-specific spacing/typography lives here; cards, pills, notes, and the
+// kpi mock all reuse the shared global classes so the page stays on-theme for free.
+
+:host {
+  display: block;
+}
+
+.guide {
+  // Constrain to a comfortable reading measure; the shell already pads the sides.
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+// ---- Intro banner ----
+.guide-hero {
+  // Same soft green→violet wash as the shiller focus banner, for a warm opener.
+  background: linear-gradient(
+    120deg,
+    rgba(45, 212, 167, 0.11),
+    rgba(139, 123, 247, 0.09)
+  );
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.guide-hero h1 {
+  font-size: clamp(24px, 4vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-wrap: balance;
+  margin: 10px 0 12px;
+}
+.guide-hero p {
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.6;
+  max-width: 62ch;
+  margin: 0;
+}
+.role-line {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.role-line .mut {
+  color: var(--ink-3);
+}
+
+// ---- Section prose ----
+h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 22px 0 6px;
+}
+section p {
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.62;
+  margin: 8px 0;
+  max-width: 66ch;
+}
+
+// Bulleted lists with a small green marker, echoing the accent.
+.prose-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-width: 68ch;
+}
+.prose-list li {
+  position: relative;
+  padding-left: 20px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.prose-list li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  opacity: 0.85;
+}
+.prose-list li b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+// Inline code chips (usernames, count/target).
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+// Anchor links reuse the global .link accent; give a subtle hover cue.
+a.link:hover {
+  text-decoration: underline;
+}
+
+// ---- Admin-tinted pill variant (violet), local so the global .pill is untouched ----
+.pill.adm {
+  color: var(--violet);
+  background: rgba(139, 123, 247, 0.14);
+}
+
+// ---- KPI mock ----
+.kpi-grid.demo {
+  margin: 16px 0 4px;
+}
+.kpi-grid.demo .kpi {
+  padding: 14px;
+}
+// Static stand-in for the real mat-progress-bar in the quota cards.
+.demo-bar {
+  margin-top: 12px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.demo-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+}
+
+// ---- Status legend ----
+.legend {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.legend-row .pill {
+  flex: none;
+  min-width: 84px;
+  justify-content: center;
+}

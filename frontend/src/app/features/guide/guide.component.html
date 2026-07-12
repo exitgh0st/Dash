@@ -1,0 +1,145 @@
+<div class="guide fade">
+  <!-- ===== Intro banner (shared by both roles) ===== -->
+  <div class="guide-hero card">
+    <div>
+      <div class="eyebrow mono">User Guide</div>
+      <h1 class="disp">Everything Dash does, in plain language.</h1>
+      <p>
+        Dash tracks the team's Reddit karma-farming work across all our accounts. It shows, at a glance,
+        which accounts have already hit this week's comment and post quota — and which still need work.
+        This page walks through every screen. No technical background needed.
+      </p>
+      <div class="role-line">
+        You're signed in as
+        <span class="pill met" [class.adm]="isAdmin()">{{ roleLabel() }}</span>
+        <span class="mut">— this guide shows the parts that apply to you.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== The two roles ===== -->
+  <section class="card">
+    <div class="section-head"><div><h2>The two roles</h2><div class="sub">Who sees what</div></div></div>
+    <ul class="prose-list">
+      <li><b>Admin</b> — oversees everyone. Sees every Reddit account across the whole team, adds and manages team members, and sets each person's weekly quotas.</li>
+      <li><b>Reddit Manager</b> — operates their own set of Reddit accounts. Sees only their own accounts and how they're tracking against this week's quota.</li>
+    </ul>
+    <!-- Clears up the name mismatch a non-technical reader will notice. -->
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
+      <span>&ldquo;Reddit Manager&rdquo; is the on-screen name for the role the team informally calls a <i>shiller</i>. Same role, two names.</span>
+    </div>
+  </section>
+
+  <!-- ===== Getting started ===== -->
+  <section class="card">
+    <div class="section-head"><div><h2>Getting started</h2><div class="sub">Logging in and finding your way around</div></div></div>
+
+    <h3>Getting an account</h3>
+    <p>You don't sign yourself up. An <b>admin creates your account</b> and gives you an email and password to log in with.</p>
+
+    <h3>Logging in</h3>
+    <p>Enter your email and password, then <b>Sign in</b>. Wrong details show &ldquo;Invalid email or password.&rdquo; Once you're in, your session stays logged in until you log out.</p>
+
+    <h3>Finding your way around</h3>
+    <ul class="prose-list">
+      <li><b>Left sidebar</b> — the main menu: <b>Dashboard</b>, <b>Accounts</b>, and <b>Activity History</b>. Admins also get <b>Team &amp; Access</b>. Your name, role, and <b>Log out</b> sit at the bottom.</li>
+      <li><b>Top bar</b> — names the current page. On the Dashboard it also shows <b>This week</b> / <b>Last week</b> buttons that switch which week you're viewing. A week runs <b>Monday to Sunday</b>.</li>
+      <li><b>On a phone</b> — the sidebar tucks behind a menu (&#9776;) button. Tap to open it.</li>
+    </ul>
+  </section>
+
+  <!-- ===== For Reddit Managers (shown to everyone; admins "see everything") ===== -->
+  <section class="card">
+    <div class="section-head">
+      <div><h2>For Reddit Managers</h2><div class="sub">Your day-to-day screens</div></div>
+      <span class="pill met">Reddit Manager</span>
+    </div>
+
+    <h3>Your Dashboard</h3>
+    <p>Your home screen. Four cards summarise your week:</p>
+
+    <!-- Illustrative mock of the real four dashboard cards, built from the app's kpi primitives. -->
+    <div class="kpi-grid kpi-grid-4 demo" aria-label="Example of the four dashboard cards">
+      <div class="kpi card"><div class="kpi-label">Comments</div><div class="kpi-val">128</div><div class="kpi-sub">this week</div></div>
+      <div class="kpi card"><div class="kpi-label">Karma</div><div class="kpi-val" style="color: var(--green)">+414</div><div class="kpi-sub">this week</div></div>
+      <div class="kpi card"><div class="kpi-label">Comment quota</div><div class="kpi-val">128<span class="kpi-target"> / 150</span></div><div class="demo-bar"><i style="width: 85%"></i></div></div>
+      <div class="kpi card"><div class="kpi-label">Post quota</div><div class="kpi-val">11<span class="kpi-target"> / 15</span></div><div class="demo-bar"><i style="width: 73%"></i></div></div>
+    </div>
+
+    <ul class="prose-list">
+      <li><b>Comments this week</b> — how many comments your accounts have made since Monday.</li>
+      <li><b>Karma this week</b> — how much karma your accounts have gained this week.</li>
+      <li><b>Comment quota</b> — progress toward this week's comment target, shown as <code>done / target</code> with a green bar that fills as you get closer. It stops at full once you hit the target.</li>
+      <li><b>Post quota</b> — the same, for posts.</li>
+    </ul>
+    <p>Below the cards: your <b>accounts table</b> (each account with its comments, karma, and status) and a <b>My recent comments</b> feed of your latest comments across all accounts, newest first — each links straight to Reddit.</p>
+
+    <h3>Your Accounts</h3>
+    <p>Open <a routerLink="/accounts" class="link">Accounts</a> to manage which Reddit accounts you track.</p>
+    <ul class="prose-list">
+      <li><b>Add an account</b> — select Add, type the Reddit username (e.g. <code>u/example_user</code>), and confirm. There's <b>no &ldquo;log in with Reddit&rdquo; step</b>. If the username doesn't exist you'll see &ldquo;No Reddit user found&rdquo;; if you already track it, &ldquo;already tracking.&rdquo;</li>
+      <li><b>Remove an account</b> — select remove and confirm. Dash stops tracking it.</li>
+    </ul>
+
+    <h3>Activity History</h3>
+    <p><a routerLink="/history" class="link">Activity History</a> is one combined feed of the most recent comments from all your accounts, newest first, each linking out to Reddit — the quickest way to see everything lately in one place.</p>
+
+    <h3>Reading one account's comments</h3>
+    <p>Select any account (from your dashboard table) to see just its comments. Use the <b>date range</b> picker to narrow the list to a specific stretch of days — handy for checking a particular week.</p>
+  </section>
+
+  <!-- ===== For Admins (admin-only) ===== -->
+  @if (isAdmin()) {
+    <section class="card">
+      <div class="section-head">
+        <div><h2>For Admins</h2><div class="sub">Overseeing the whole team</div></div>
+        <span class="pill adm">Admin</span>
+      </div>
+
+      <h3>The overview dashboard</h3>
+      <p>Your <a routerLink="/dashboard" class="link">Dashboard</a> covers the <b>whole team</b>. Same four cards totalled across everyone, plus:</p>
+      <ul class="prose-list">
+        <li><b>Comments by account</b> — a bar chart comparing each account's comments this week.</li>
+        <li><b>Karma trend</b> — this week's karma gain beside last week's. Shows a &ldquo;collecting data&rdquo; message until there are two weeks to compare.</li>
+        <li><b>Managed accounts table</b> — every account across the team: who manages it, its comment count, its karma and this week's change, and its status. Select any row to read that account's comments.</li>
+      </ul>
+
+      <h3>Team &amp; Access</h3>
+      <p><a routerLink="/team" class="link">Team &amp; Access</a> is where you manage the people on the team.</p>
+      <ul class="prose-list">
+        <li><b>Create</b> a member — give them an email and a password (at least 8 characters). They can log in right away.</li>
+        <li><b>Edit</b> a member — change their email, set a new password, and set their <b>weekly comment quota</b> and <b>weekly post quota</b>. These per-account targets drive the quota bars everyone sees; new accounts start at 50 comments and 5 posts per week.</li>
+        <li><b>Delete</b> a member — removes them and the Reddit accounts they tracked. Admins can't be deleted, including yourself.</li>
+        <li><b>Manage</b> — opens a member's page listing the Reddit accounts they track, each linking to its comments.</li>
+      </ul>
+    </section>
+  }
+
+  <!-- ===== Understanding the numbers (shared) ===== -->
+  <section class="card">
+    <div class="section-head"><div><h2>Understanding the numbers</h2><div class="sub">What the figures and colours mean</div></div></div>
+    <ul class="prose-list">
+      <li><b>Karma</b> — Reddit's score for an account: roughly how much positive attention its posts and comments have earned. Growing it is the whole point — it makes an account read as a genuine, established user. Reddit fuzzes the exact figure, so treat karma as a direction, not an exact count.</li>
+      <li><b>Quota</b> — the target number of comments (and posts) each account should reach in a week. The green bar fills as an account gets closer, and stops at full once the target is met.</li>
+      <li><b>The week</b> — always <b>Monday to Sunday</b>. &ldquo;This week&rdquo; means since the most recent Monday.</li>
+    </ul>
+
+    <div class="legend">
+      <div class="legend-row"><span class="pill met">On track</span><span>Green — account healthy and hitting its quota.</span></div>
+      <div class="legend-row"><span class="pill near">Behind</span><span>Orange — behind on the quota, needs more work.</span></div>
+      <div class="legend-row"><span class="pill miss">Problem</span><span>Red — the account is banned, suspended, or couldn't be checked.</span></div>
+    </div>
+  </section>
+
+  <!-- ===== Good to know (shared) ===== -->
+  <section class="card">
+    <div class="section-head"><div><h2>Good to know</h2><div class="sub">A few things that trip people up</div></div></div>
+    <ul class="prose-list">
+      <li><b>Numbers come live from Reddit</b>, so a page may take a moment to load while Dash checks each account.</li>
+      <li><b>As a Reddit Manager you only ever see your own accounts.</b> Admins see everyone's.</li>
+      <li><b>There's no &ldquo;connect with Reddit&rdquo; step</b> — you track an account by its public username alone.</li>
+      <li><b>Comments are tracked today; posts are partly there.</b> You'll see post <i>quota</i> progress, but a full feed of individual posts is still coming.</li>
+    </ul>
+  </section>
+</div>

@@ -49,6 +49,15 @@ export const routes: Routes = [
           ),
       },
       {
+        // In-app user guide (both roles; the page itself hides the admin section
+        // from Reddit Managers).
+        path: 'guide',
+        loadComponent: () =>
+          import('./features/guide/guide.component').then(
+            (m) => m.GuideComponent,
+          ),
+      },
+      {
         // Admin-only Team & Access (create + list users). roleGuard bounces shillers.
         path: 'team',
         canActivate: [roleGuard('admin')],
