@@ -4,5 +4,5 @@
  */
 export const environment = {
   production: true,
-  apiBaseUrl: '/api',
+  apiBaseUrl: 'https://dash-api-zxtk.onrender.com/api',
 };
