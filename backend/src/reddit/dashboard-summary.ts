@@ -35,6 +35,12 @@ export interface DashboardAccountRow {
   karmaLastWeek: number | null;
   /** Owning shiller's email — populated for admins only. */
   ownerEmail?: string;
+  /** Owning shiller's user id — populated for admins only; used to group + link rows. */
+  ownerId?: string;
+  /** Owner's per-account weekly comment quota — admins only (frontend sums per shiller). */
+  weeklyCommentQuota?: number;
+  /** Owner's per-account weekly post quota — admins only. */
+  weeklyPostQuota?: number;
 }
 
 /** Aggregate figures across the in-scope accounts. */

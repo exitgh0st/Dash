@@ -30,6 +30,31 @@ interface RecentComment {
   account: string;
 }
 
+/**
+ * A shiller's accounts rolled up into one summary (admin manager view). Bounded by
+ * the number of shillers — not accounts — so charts + the table stay readable no
+ * matter how many Reddit accounts each shiller operates.
+ */
+interface ShillerGroup {
+  ownerId: string;
+  ownerEmail: string;
+  accountCount: number;
+  activeCount: number;
+  weeklyComments: number;
+  weeklyPosts: number;
+  karma: number;
+  /** Summed karma gained this week (null-safe sum; null contributions count as 0). */
+  karmaThisWeek: number;
+  /** Summed last-week karma gain, or null until any account has a last-week figure. */
+  karmaLastWeek: number | null;
+  /** Σ owner comment quota over this shiller's in-scope accounts. */
+  commentQuotaTarget: number;
+  /** Σ owner post quota over this shiller's in-scope accounts. */
+  postQuotaTarget: number;
+  /** The shiller's individual accounts, kept for the drill-down. */
+  accounts: DashboardAccountRow[];
+}
+
 // Avatar palette (prototype colors), assigned by row index.
 const AVATAR_COLORS = [
   '#2DD4A7',
@@ -97,21 +122,72 @@ export class DashboardComponent {
     return Math.min(100, (k.weeklyPosts / k.postQuotaTarget) * 100);
   });
 
-  /** Bar-chart series: comment count per in-scope account. */
+  /**
+   * Per-shiller rollup for the admin manager view: fold every account into its
+   * owner's group so the charts + table scale with the (small) shiller count
+   * instead of the (unbounded) account count. Sorted by weekly comments desc so
+   * the busiest shillers surface first. Empty for shillers (no `ownerId` on rows).
+   */
+  readonly shillerGroups = computed<ShillerGroup[]>(() => {
+    const groups = new Map<string, ShillerGroup>();
+    for (const a of this.accounts()) {
+      // Group by owner id; fall back to email so a missing id never drops a row.
+      const key = a.ownerId ?? a.ownerEmail ?? a.id;
+      let g = groups.get(key);
+      if (!g) {
+        g = {
+          ownerId: a.ownerId ?? '',
+          ownerEmail: a.ownerEmail ?? '',
+          accountCount: 0,
+          activeCount: 0,
+          weeklyComments: 0,
+          weeklyPosts: 0,
+          karma: 0,
+          karmaThisWeek: 0,
+          karmaLastWeek: null,
+          commentQuotaTarget: 0,
+          postQuotaTarget: 0,
+          accounts: [],
+        };
+        groups.set(key, g);
+      }
+      g.accountCount += 1;
+      if (a.status === 'active') g.activeCount += 1;
+      g.weeklyComments += a.weeklyComments;
+      g.weeklyPosts += a.weeklyPosts;
+      g.karma += a.karma ?? 0;
+      g.karmaThisWeek += a.karmaThisWeek ?? 0;
+      // Sum last-week only over accounts that have it; stays null if none do.
+      if (a.karmaLastWeek !== null) {
+        g.karmaLastWeek = (g.karmaLastWeek ?? 0) + a.karmaLastWeek;
+      }
+      g.commentQuotaTarget += a.weeklyCommentQuota ?? 0;
+      g.postQuotaTarget += a.weeklyPostQuota ?? 0;
+      g.accounts.push(a);
+    }
+    return [...groups.values()].sort(
+      (a, b) => b.weeklyComments - a.weeklyComments,
+    );
+  });
+
+  /** Bar-chart series: comments summed per shiller (bounded to the shiller count). */
   readonly chartData = computed<BarDatum[]>(() =>
-    this.accounts().map((a) => ({ label: a.username, value: a.weeklyComments })),
+    this.shillerGroups().map((g) => ({
+      label: this.localPart(g.ownerEmail),
+      value: g.weeklyComments,
+    })),
   );
 
   /**
-   * Series for the karma-trend chart. `lastWeek` is left null (not coalesced to 0)
-   * so the chart can tell "no last-week data yet" apart from "last week gained 0"
-   * and draw a single this-week bar until a real comparison exists.
+   * Series for the karma-trend chart, aggregated per shiller. `lastWeek` stays null
+   * (not coalesced to 0) so the chart can tell "no last-week data yet" apart from
+   * "last week gained 0" and draw a single this-week bar until a real comparison exists.
    */
   readonly karmaTrendData = computed<KarmaTrendDatum[]>(() =>
-    this.accounts().map((a) => ({
-      label: a.username,
-      thisWeek: a.karmaThisWeek ?? 0,
-      lastWeek: a.karmaLastWeek,
+    this.shillerGroups().map((g) => ({
+      label: this.localPart(g.ownerEmail),
+      thisWeek: g.karmaThisWeek,
+      lastWeek: g.karmaLastWeek,
     })),
   );
 
@@ -241,6 +317,42 @@ export class DashboardComponent {
     return AVATAR_COLORS[index % AVATAR_COLORS.length];
   }
 
+  /** Email → local part (before `@`), for compact chart/group labels. */
+  localPart(email: string): string {
+    return (email ?? '').split('@')[0];
+  }
+
+  /** Stable key for a shiller group's expand state (owner id, or email fallback). */
+  private groupKey(g: ShillerGroup): string {
+    return g.ownerId || g.ownerEmail;
+  }
+
+  /** Toggle a shiller group's drill-down open/closed. */
+  toggleShiller(g: ShillerGroup): void {
+    const next = new Set(this.expandedShillers());
+    const key = this.groupKey(g);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    this.expandedShillers.set(next);
+  }
+
+  /** Whether a shiller group's accounts are currently expanded. */
+  isExpanded(g: ShillerGroup): boolean {
+    return this.expandedShillers().has(this.groupKey(g));
+  }
+
+  /** Comment-quota fill for a shiller group, clamped to [0,100]; 0 with no target. */
+  groupCommentPct(g: ShillerGroup): number {
+    if (g.commentQuotaTarget <= 0) return 0;
+    return Math.min(100, (g.weeklyComments / g.commentQuotaTarget) * 100);
+  }
+
+  /** Post-quota fill for a shiller group; same clamping as {@link groupCommentPct}. */
+  groupPostPct(g: ShillerGroup): number {
+    if (g.postQuotaTarget <= 0) return 0;
+    return Math.min(100, (g.weeklyPosts / g.postQuotaTarget) * 100);
+  }
+
   /** Format a nullable number with thousands separators; null → em dash. */
   fmt(value: number | null): string {
     return value === null ? '—' : value.toLocaleString();
@@ -254,6 +366,17 @@ export class DashboardComponent {
   /** Whether an account has a karma Δ to show — true once a this-week baseline exists. */
   hasTrend(row: DashboardAccountRow): boolean {
     return row.karmaThisWeek !== null;
+  }
+
+  /** Whether a shiller group has any karma Δ to show (any account with a baseline). */
+  groupHasTrend(g: ShillerGroup): boolean {
+    return g.accounts.some((a) => a.karmaThisWeek !== null);
+  }
+
+  /** Group-level trend direction: this-week gain meets/beats last week (or no last week). */
+  groupTrendUp(g: ShillerGroup): boolean {
+    if (g.karmaLastWeek === null) return true;
+    return g.karmaThisWeek >= g.karmaLastWeek;
   }
 
   /**

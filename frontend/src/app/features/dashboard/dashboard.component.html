@@ -70,7 +70,7 @@
       <div class="two-col">
         <div class="card">
           <div class="chart-head">
-            <span class="chart-title">Comments by account</span>
+            <span class="chart-title">Comments by shiller</span>
             <span class="legend"><i></i>Comments this week</span>
           </div>
           <app-comments-bar-chart [data]="chartData()" />
@@ -98,47 +98,95 @@
       <div class="section-head">
         <div>
           <h2>Managed accounts</h2>
-          <div class="sub">{{ accounts().length }} accounts · {{ rangeLabel() }}</div>
+          <div class="sub">{{ shillerGroups().length }} shiller{{ shillerGroups().length === 1 ? '' : 's' }} · {{ accounts().length }} account{{ accounts().length === 1 ? '' : 's' }} · {{ rangeLabel() }}</div>
         </div>
         <a class="link" routerLink="/accounts">View all accounts →</a>
       </div>
 
+      <!--
+        Grouped by shiller so the table scales with the (small) shiller count, not the
+        (unbounded) account count. Each summary row is expandable; expanding reveals
+        that shiller's individual accounts as indented child rows.
+      -->
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Account</th>
-              <th>Managed by</th>
+              <th>Shiller / account</th>
               <th>Comments</th>
               <th>Karma</th>
               <th>Δ this week</th>
+              <th>Quota</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            @for (a of accounts(); track a.id; let i = $index) {
-              <tr class="clickable" [routerLink]="['/reddit-accounts', a.id, 'comments']">
+            @for (g of shillerGroups(); track g.ownerId || g.ownerEmail; let i = $index) {
+              <!-- Shiller summary row: click toggles the drill-down. -->
+              <tr class="group-row clickable" (click)="toggleShiller(g)">
                 <td>
                   <div class="acct">
-                    <div class="a-av" [style.background]="avatarColor(i)">{{ initials(a.username) }}</div>
-                    <div><b>u/{{ a.username }}</b></div>
+                    <span class="caret" [class.open]="isExpanded(g)">▸</span>
+                    <div class="a-av" [style.background]="avatarColor(i)">{{ initials(localPart(g.ownerEmail)) }}</div>
+                    <div>
+                      <b>{{ localPart(g.ownerEmail) }}</b>
+                      <div class="subs">
+                        {{ g.accountCount }} account{{ g.accountCount === 1 ? '' : 's' }}
+                        @if (g.ownerId) {
+                          · <a class="link" [routerLink]="['/shillers', g.ownerId]" (click)="$event.stopPropagation()">view →</a>
+                        }
+                      </div>
+                    </div>
                   </div>
                 </td>
-                <td>{{ a.ownerEmail }}</td>
-                <td class="num">{{ a.weeklyComments }}</td>
-                <td class="num">{{ fmt(a.karma) }}</td>
-                <!-- Δ karma: this week's gain, arrow vs last week; "—" until a baseline exists. -->
+                <td class="num">{{ g.weeklyComments }}</td>
+                <td class="num">{{ fmt(g.karma) }}</td>
                 <td class="num">
-                  @if (hasTrend(a)) {
-                    <span class="delta" [class.up]="trendUp(a)" [class.down]="!trendUp(a)">
-                      {{ trendUp(a) ? '▲' : '▼' }} {{ fmtSigned(a.karmaThisWeek) }}
+                  @if (groupHasTrend(g)) {
+                    <span class="delta" [class.up]="groupTrendUp(g)" [class.down]="!groupTrendUp(g)">
+                      {{ groupTrendUp(g) ? '▲' : '▼' }} {{ fmtSigned(g.karmaThisWeek) }}
                     </span>
                   } @else {
                     <span class="sub">—</span>
                   }
                 </td>
-                <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
+                <!-- Quota: summed weekly comments over Σ owner per-account comment quota. -->
+                <td class="num">
+                  @if (g.commentQuotaTarget > 0) {
+                    <span class="pct" [class.met]="groupCommentPct(g) >= 100">{{ groupCommentPct(g).toFixed(0) }}%</span>
+                  } @else {
+                    <span class="sub">—</span>
+                  }
+                </td>
+                <td>
+                  <span class="pill" [class.met]="g.activeCount === g.accountCount" [class.miss]="g.activeCount !== g.accountCount">{{ g.activeCount }}/{{ g.accountCount }} active</span>
+                </td>
               </tr>
+              <!-- Drill-down: this shiller's individual accounts, indented. -->
+              @if (isExpanded(g)) {
+                @for (a of g.accounts; track a.id) {
+                  <tr class="child-row clickable" [routerLink]="['/reddit-accounts', a.id, 'comments']">
+                    <td>
+                      <div class="acct child-acct">
+                        <div><b>u/{{ a.username }}</b></div>
+                      </div>
+                    </td>
+                    <td class="num">{{ a.weeklyComments }}</td>
+                    <td class="num">{{ fmt(a.karma) }}</td>
+                    <td class="num">
+                      @if (hasTrend(a)) {
+                        <span class="delta" [class.up]="trendUp(a)" [class.down]="!trendUp(a)">
+                          {{ trendUp(a) ? '▲' : '▼' }} {{ fmtSigned(a.karmaThisWeek) }}
+                        </span>
+                      } @else {
+                        <span class="sub">—</span>
+                      }
+                    </td>
+                    <td class="num"><span class="sub">—</span></td>
+                    <td><span class="pill" [class.met]="statusPill(a.status) === 'met'" [class.miss]="statusPill(a.status) === 'miss'">{{ a.status }}</span></td>
+                  </tr>
+                }
+              }
             }
           </tbody>
         </table>
