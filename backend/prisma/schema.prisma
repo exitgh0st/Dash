@@ -67,13 +67,38 @@ model RedditAccount {
   user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   redditUsername String
   status         RedditAccountStatus @default(active)
+  // Current total karma from the last refresh. Null until first refreshed. This
+  // is a "current" value (identical across the this-week/last-week dashboard
+  // views), so it lives on the account rather than per week; `lastCheckedAt` is
+  // its as-of timestamp.
+  karma          Int?
   lastCheckedAt  DateTime?
   karmaSnapshots KarmaSnapshot[]
+  weekMetrics    AccountWeekMetric[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
   // One entry per (shiller, reddit account) — prevents tracking duplicates.
   @@unique([userId, redditUsername])
+}
+
+/// Cached per-account, per-week comment/post counts backing the dashboard's
+/// stale-while-revalidate reads. The dashboard serves these from Postgres
+/// (instant, no Reddit call); a background refresh re-polls Reddit and upserts
+/// them when `refreshedAt` is older than the staleness window. Only the
+/// week-scoped counts live here — current karma/status live on RedditAccount.
+model AccountWeekMetric {
+  id             String        @id @default(uuid())
+  accountId      String
+  account        RedditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  weekStart      DateTime // Monday 00:00 (local) of the summarized week
+  weeklyComments Int
+  weeklyPosts    Int
+  refreshedAt    DateTime      @updatedAt // last time these counts were re-polled
+
+  // One cached metric per (account, week); the refresh upsert relies on this.
+  @@unique([accountId, weekStart])
+  @@index([accountId])
 }
 
 /// A weekly karma baseline for a tracked account, powering the karma-trend

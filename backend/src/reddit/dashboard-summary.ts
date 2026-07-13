@@ -61,4 +61,10 @@ export interface DashboardSummary {
   range: DashboardRange;
   kpis: DashboardKpis;
   accounts: DashboardAccountRow[];
+  /**
+   * True when this response was served from cache but one or more accounts were
+   * stale/cold and a background refresh was kicked off. The UI can use it to show
+   * an "updating…" hint and silently re-fetch once to pick up fresher numbers.
+   */
+  refreshing?: boolean;
 }

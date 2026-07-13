@@ -125,10 +125,19 @@ export class DashboardComponent {
     this.accounts().some((a) => a.karmaThisWeek !== null),
   );
 
+  // Which shiller groups are expanded (by owner key) in the drill-down table.
+  readonly expandedShillers = signal<Set<string>>(new Set());
+
   /** First-name-ish greeting from the email local part (no display names stored). */
   readonly greeting = computed(
     () => (this.auth.currentUser()?.email ?? '').split('@')[0],
   );
+
+  // Delay before the silent re-fetch that picks up background-refreshed numbers.
+  private static readonly REFRESH_REFETCH_MS = 5000;
+  // Pending silent re-fetch timer, cleared on every new load so a range switch
+  // can't leave a stale-week refetch queued.
+  private refetchTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Refetch the summary whenever the selected week changes (topbar pills).
@@ -138,20 +147,48 @@ export class DashboardComponent {
     });
   }
 
-  /** Load the summary for a week; on success, kick off the shiller recent list. */
-  private load(range: 'this-week' | 'last-week'): void {
-    this.loading.set(true);
-    this.error.set(false);
+  /**
+   * Load the summary for a week; on success, kick off the shiller recent list.
+   *
+   * When the backend served stale numbers with a background refresh in flight
+   * (`summary.refreshing`), schedule a single silent re-fetch to swap in the
+   * fresher values once they land. A silent re-fetch neither shows the spinner nor
+   * re-arms itself, so it can't spin or flicker.
+   *
+   * @param range the week to load.
+   * @param silent when true, this is the follow-up refresh — no spinner, no
+   *   re-scheduling, and errors leave the current data in place.
+   */
+  private load(range: 'this-week' | 'last-week', silent = false): void {
+    // Cancel any queued re-fetch — a new load supersedes it.
+    if (this.refetchTimer !== null) {
+      clearTimeout(this.refetchTimer);
+      this.refetchTimer = null;
+    }
+    if (!silent) {
+      this.loading.set(true);
+      this.error.set(false);
+    }
     this.reddit.dashboard(range).subscribe({
       next: (summary) => {
         this.summary.set(summary);
         this.loading.set(false);
         // Shillers also get a live "recent comments" feed across their accounts.
-        if (!this.isAdmin()) {
+        // Only on a user-driven load — the silent refresh only updates the counts.
+        if (!this.isAdmin() && !silent) {
           this.loadRecentComments(summary.accounts);
+        }
+        // Numbers were stale + refreshing server-side: grab the fresher ones once.
+        if (summary.refreshing && !silent) {
+          this.refetchTimer = setTimeout(
+            () => this.load(range, true),
+            DashboardComponent.REFRESH_REFETCH_MS,
+          );
         }
       },
       error: () => {
+        // A failed silent refresh keeps the data we already have on screen.
+        if (silent) return;
         this.loading.set(false);
         this.error.set(true);
       },

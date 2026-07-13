@@ -81,6 +81,12 @@ export class RedditService {
   // single shared credential (not per-request/per-user state).
   private cachedToken: CachedAccessToken | null = null;
 
+  // Single-flight guard for token minting: when the cache is cold and many reads
+  // fire at once (e.g. a parallel dashboard refresh), they share one in-flight
+  // refresh instead of each hitting Reddit's token endpoint — concurrent refreshes
+  // of the same grant are otherwise rejected, spuriously erroring a row.
+  private tokenMintInFlight: Promise<string> | null = null;
+
   // Epoch-ms timestamps of recent Reddit API requests, used to enforce the global
   // 60/min budget. Entries older than the rolling window are pruned on each admit.
   private requestTimestamps: number[] = [];
@@ -193,6 +199,24 @@ export class RedditService {
       return this.cachedToken.accessToken;
     }
 
+    // Coalesce concurrent cold-cache callers onto one mint; the first to arrive
+    // starts it, the rest await the same promise.
+    if (this.tokenMintInFlight) {
+      return this.tokenMintInFlight;
+    }
+    this.tokenMintInFlight = this.mintAccessToken().finally(() => {
+      this.tokenMintInFlight = null;
+    });
+    return this.tokenMintInFlight;
+  }
+
+  /**
+   * Exchange the shared Devvit refresh token for a fresh access token and cache it.
+   * Always routed through {@link getAccessToken}'s single-flight guard, so at most
+   * one refresh request is in flight at a time.
+   * @throws BadRequestException if Reddit rejects the refresh (e.g. revoked token).
+   */
+  private async mintAccessToken(): Promise<string> {
     const clientId = this.config.get<string>(
       'REDDIT_OAUTH_CLIENT_ID',
       DEFAULT_DEVVIT_CLIENT_ID,

@@ -84,4 +84,10 @@ export interface DashboardSummary {
   range: DashboardRangeInfo;
   kpis: DashboardKpis;
   accounts: DashboardAccountRow[];
+  /**
+   * True when the response was served from cache with a background refresh in
+   * flight (some accounts were stale). The dashboard silently re-fetches once to
+   * pick up the fresher numbers.
+   */
+  refreshing?: boolean;
 }

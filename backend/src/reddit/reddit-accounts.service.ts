@@ -38,6 +38,32 @@ type AccountWithOwner = Prisma.RedditAccountGetPayload<{
   };
 }>;
 
+// How long a cached AccountWeekMetric stays "fresh". Past this, a dashboard read
+// still serves the cached value instantly but kicks off a background refresh.
+const METRICS_STALE_MS = 5 * 60 * 1000;
+
+// Cap on concurrent per-account write transactions during a refresh. Each account
+// writes in one transaction (one DB connection), so refreshing a large fleet in
+// parallel would otherwise exhaust the shared Postgres pool (Supabase's session
+// pooler caps at ~15 clients). 5 keeps us comfortably under that while the Reddit
+// reads themselves stay fully parallel (bounded only by RedditService's throttle).
+const MAX_CONCURRENT_REFRESH_WRITES = 5;
+
+/** The freshly-polled figures a refresh produces (or null when Reddit failed). */
+interface RefreshedFigures {
+  weeklyComments: number;
+  weeklyPosts: number;
+  karma: number;
+  status: RedditAccountStatus;
+}
+
+/** A cached week metric row as loaded for the dashboard read. */
+interface CachedWeekMetric {
+  weeklyComments: number;
+  weeklyPosts: number;
+  refreshedAt: Date;
+}
+
 /** Monday 00:00:00.000 (local) of the week containing `date`. */
 function startOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -93,18 +119,34 @@ function resolveRange(key: DashboardRangeKey): DashboardRange {
 export class RedditAccountsService {
   private readonly logger = new Logger(RedditAccountsService.name);
 
+  // Keys (`accountId:weekStartMs`) of in-flight background refreshes, so
+  // overlapping dashboard requests don't spawn duplicate Reddit crawls for the
+  // same account/week. Safe as in-memory state on this singleton service — it
+  // only guards concurrency, never correctness.
+  private readonly refreshingKeys = new Set<string>();
+
+  // Simple counting semaphore bounding concurrent refresh write-transactions to
+  // MAX_CONCURRENT_REFRESH_WRITES, so a large-fleet refresh can't exhaust the DB
+  // connection pool. `dbWriteQueue` holds resolvers for callers waiting for a slot.
+  private dbWriteActive = 0;
+  private readonly dbWriteQueue: Array<() => void> = [];
+
   constructor(
     private readonly reddit: RedditService,
     private readonly prisma: PrismaService,
   ) {}
 
   /**
-   * Build the role-scoped dashboard summary for the current week (or last week).
+   * Build the role-scoped dashboard summary for the current week (or last week),
+   * served from the DB metrics cache (stale-while-revalidate) — no Reddit call in
+   * the request path.
    *
-   * Admins see every tracked account (with the owner's email); a shiller sees
-   * only their own. Per account we read the week's comment count and current
-   * karma/status from Reddit through the shared, globally-throttled service, so
-   * the browser never fans out N calls itself. KPIs are summed from the rows.
+   * Admins see every tracked account (with the owner's email); a shiller sees only
+   * their own. Per-account weekly counts come from `AccountWeekMetric`; current
+   * karma/status come from `RedditAccount`. Accounts whose cache is missing (cold)
+   * are refreshed synchronously so their row isn't empty; accounts whose cache is
+   * older than {@link METRICS_STALE_MS} are returned stale and refreshed in the
+   * background. KPIs are summed from the assembled rows.
    *
    * @param requester the authenticated principal (role decides scope).
    * @param rangeKey which week to summarize; defaults to the current week.
@@ -136,27 +178,62 @@ export class RedditAccountsService {
     const thisWeekStart = startOfWeek(new Date());
     const lastWeekStart = new Date(thisWeekStart);
     lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    const baselines = await this.loadKarmaBaselines(
-      accounts.map((a) => a.id),
-      thisWeekStart,
-      lastWeekStart,
+    // The viewed week decides which cached counts to read.
+    const viewedWeekStart =
+      rangeKey === 'last-week' ? lastWeekStart : thisWeekStart;
+
+    const accountIds = accounts.map((a) => a.id);
+    // Two cheap DB reads, no Reddit: karma baselines + the viewed week's cached counts.
+    const [baselines, metrics] = await Promise.all([
+      this.loadKarmaBaselines(accountIds, thisWeekStart, lastWeekStart),
+      this.loadWeekMetrics(accountIds, viewedWeekStart),
+    ]);
+
+    const now = Date.now();
+    // Cold = no cached row yet → must refresh synchronously so the row isn't empty.
+    const coldAccounts = accounts.filter((a) => !metrics.get(a.id));
+    // Stale = cached but older than the window → serve stale, refresh in background.
+    const staleAccounts = accounts.filter((a) => {
+      const m = metrics.get(a.id);
+      return (
+        m !== undefined && now - m.refreshedAt.getTime() > METRICS_STALE_MS
+      );
+    });
+
+    // Populate cold accounts up front (parallelized). Their fresh figures are used
+    // directly for this response; the cache is now warm for subsequent loads.
+    const freshByAccount = new Map<string, RefreshedFigures | null>();
+    await Promise.all(
+      coldAccounts.map(async (account) => {
+        freshByAccount.set(
+          account.id,
+          await this.refreshAccountMetrics(
+            account,
+            range,
+            thisWeekStart,
+            viewedWeekStart,
+          ),
+        );
+      }),
     );
 
-    // Sequential (not Promise.all) so we lean on the shared 60/min throttle
-    // rather than firing every account's calls at once.
-    const rows: DashboardAccountRow[] = [];
-    for (const account of accounts) {
-      rows.push(
-        await this.buildDashboardRow(account, range, isAdmin, {
-          thisWeekStart,
-          lastWeekStart,
-          baselineThisWeek:
-            baselines.get(this.baselineKey(account.id, thisWeekStart)) ?? null,
-          baselineLastWeek:
-            baselines.get(this.baselineKey(account.id, lastWeekStart)) ?? null,
-        }),
-      );
+    // Kick stale accounts' refreshes off without waiting (deduped).
+    for (const account of staleAccounts) {
+      this.refreshInBackground(account, range, thisWeekStart, viewedWeekStart);
     }
+
+    // Assemble rows from cache + any just-fetched cold figures. Order follows
+    // `accounts` (createdAt asc).
+    const rows: DashboardAccountRow[] = accounts.map((account) =>
+      this.assembleRow(account, isAdmin, {
+        metric: metrics.get(account.id) ?? null,
+        fresh: freshByAccount.get(account.id),
+        baselineThisWeek:
+          baselines.get(this.baselineKey(account.id, thisWeekStart)) ?? null,
+        baselineLastWeek:
+          baselines.get(this.baselineKey(account.id, lastWeekStart)) ?? null,
+      }),
+    );
 
     return {
       range,
@@ -182,6 +259,114 @@ export class RedditAccountsService {
         ),
       },
       accounts: rows,
+      // Signal the UI to silently re-fetch once: only stale (background-refreshing)
+      // accounts leave fresher numbers pending — cold ones were refreshed inline.
+      refreshing: staleAccounts.length > 0 ? true : undefined,
+    };
+  }
+
+  /**
+   * Batch-load the viewed week's cached metric rows for the given accounts in one
+   * query, keyed by accountId. Accounts with no cached row are absent from the map.
+   */
+  private async loadWeekMetrics(
+    accountIds: string[],
+    weekStart: Date,
+  ): Promise<Map<string, CachedWeekMetric>> {
+    const rows = await this.prisma.accountWeekMetric.findMany({
+      where: { accountId: { in: accountIds }, weekStart },
+      select: {
+        accountId: true,
+        weeklyComments: true,
+        weeklyPosts: true,
+        refreshedAt: true,
+      },
+    });
+    const map = new Map<string, CachedWeekMetric>();
+    for (const r of rows) {
+      map.set(r.accountId, {
+        weeklyComments: r.weeklyComments,
+        weeklyPosts: r.weeklyPosts,
+        refreshedAt: r.refreshedAt,
+      });
+    }
+    return map;
+  }
+
+  /**
+   * Assemble one dashboard row from cached/just-refreshed figures — no Reddit call.
+   *
+   * Figure source precedence: a just-fetched cold refresh (`fresh`) wins; otherwise
+   * the cached metric + the account's stored karma/status are used. A cold refresh
+   * that failed (`fresh === null`) yields an error row.
+   */
+  private assembleRow(
+    account: AccountWithOwner,
+    isAdmin: boolean,
+    data: {
+      metric: CachedWeekMetric | null;
+      fresh: RefreshedFigures | null | undefined;
+      baselineThisWeek: number | null;
+      baselineLastWeek: number | null;
+    },
+  ): DashboardAccountRow {
+    const base = {
+      id: account.id,
+      username: account.redditUsername,
+      ownerEmail: isAdmin ? account.user.email : undefined,
+      // Owner id + quotas are admin-only — they drive the frontend's per-shiller
+      // rollup (grouping key, group→shiller-detail link, per-shiller quota target).
+      ownerId: isAdmin ? account.userId : undefined,
+      weeklyCommentQuota: isAdmin ? account.user.weeklyCommentQuota : undefined,
+      weeklyPostQuota: isAdmin ? account.user.weeklyPostQuota : undefined,
+    };
+
+    // Cold refresh failed and there's no cache to fall back to → error row.
+    if (data.fresh === null) {
+      return {
+        ...base,
+        status: RedditAccountStatus.error,
+        lastCheckedAt: new Date().toISOString(),
+        weeklyComments: 0,
+        weeklyPosts: 0,
+        karma: account.karma,
+        karmaThisWeek: null,
+        karmaLastWeek: null,
+      };
+    }
+
+    // Prefer just-fetched cold figures; else fall back to cache + account snapshot.
+    const weeklyComments =
+      data.fresh?.weeklyComments ?? data.metric?.weeklyComments ?? 0;
+    const weeklyPosts =
+      data.fresh?.weeklyPosts ?? data.metric?.weeklyPosts ?? 0;
+    const karma = data.fresh?.karma ?? account.karma;
+    const status = data.fresh?.status ?? account.status;
+    // Freshly refreshed rows are as-of now; cached rows keep the account's stamp.
+    const lastCheckedAt = data.fresh
+      ? new Date().toISOString()
+      : (account.lastCheckedAt?.toISOString() ?? null);
+
+    // Karma trend needs a numeric current karma; skip it when we've never captured one.
+    let karmaThisWeek: number | null = null;
+    let karmaLastWeek: number | null = null;
+    if (karma !== null) {
+      ({ karmaThisWeek, karmaLastWeek } = this.computeKarmaTrend(
+        karma,
+        data.baselineThisWeek,
+        data.baselineLastWeek,
+      ));
+    }
+
+    return {
+      ...base,
+      status,
+      lastCheckedAt,
+      weeklyComments,
+      weeklyPosts,
+      karma,
+      karmaThisWeek,
+      karmaLastWeek,
     };
   }
 
@@ -214,102 +399,197 @@ export class RedditAccountsService {
   }
 
   /**
-   * Fetch one account's weekly comment count + current karma/status, stamping
-   * `lastCheckedAt` and capturing/using its karma-trend baselines. Isolated so
-   * one bad account can't fail the whole dashboard.
+   * Re-poll one account from Reddit and write its results to the cache: the viewed
+   * week's comment/post counts (`AccountWeekMetric`), the current karma/status
+   * snapshot (`RedditAccount`), and the create-only current-week karma baseline
+   * (`KarmaSnapshot`). This is the "revalidate" half of the dashboard's
+   * stale-while-revalidate flow — never called from the request's hot path except
+   * for cold accounts.
    *
-   * @param baselines pre-fetched karma baselines for this/last week (from
-   *   `loadKarmaBaselines`) plus the week-start dates used for the write-through
-   *   snapshot.
+   * Isolated: on a Reddit failure it marks the account `error`, ensures a cache row
+   * exists (so the account isn't perpetually re-treated as cold), and returns null
+   * rather than throwing — one bad account can't fail the dashboard.
+   *
+   * @param thisWeekStart current week's Monday (the karma baseline is always
+   *   anchored here, even when refreshing last week's counts).
+   * @param viewedWeekStart the week whose counts are being refreshed.
+   * @returns the fresh figures, or null when Reddit failed.
    */
-  private async buildDashboardRow(
+  private async refreshAccountMetrics(
     account: AccountWithOwner,
     range: DashboardRange,
-    isAdmin: boolean,
-    baselines: {
-      thisWeekStart: Date;
-      lastWeekStart: Date;
-      baselineThisWeek: number | null;
-      baselineLastWeek: number | null;
-    },
-  ): Promise<DashboardAccountRow> {
-    const base = {
-      id: account.id,
-      username: account.redditUsername,
-      ownerEmail: isAdmin ? account.user.email : undefined,
-    };
-
+    thisWeekStart: Date,
+    viewedWeekStart: Date,
+  ): Promise<RefreshedFigures | null> {
     try {
-      const comments = await this.reddit.getComments(account.redditUsername, {
-        from: range.from,
-        to: range.to,
-      });
-      // Second Reddit read for the post-quota metric — throttled globally with
-      // the comment read via the shared 60/min gate, so it's just slower, not unsafe.
-      const weeklyPosts = await this.reddit.getWeeklyPostCount(
-        account.redditUsername,
-        { from: range.from, to: range.to },
-      );
-      const stats = await this.reddit.getAccountStats(account.redditUsername);
+      // The three reads are independent, so fetch them concurrently. All three
+      // still pass through the shared 60/min gate in RedditService, so this is
+      // safe on rate limits — it just collapses per-account latency from the sum
+      // of the reads to the slowest one (comments/posts crawls + the /about read).
+      const [comments, weeklyPosts, stats] = await Promise.all([
+        this.reddit.getComments(account.redditUsername, {
+          from: range.from,
+          to: range.to,
+        }),
+        this.reddit.getWeeklyPostCount(account.redditUsername, {
+          from: range.from,
+          to: range.to,
+        }),
+        this.reddit.getAccountStats(account.redditUsername),
+      ]);
 
-      // Real poll of the account — persist freshness + latest known status.
-      const updated = await this.prisma.redditAccount.update({
-        where: { id: account.id },
-        data: { lastCheckedAt: new Date(), status: stats.status },
-      });
-
-      // Write-through, create-only: the first karma seen this week becomes an
-      // immutable baseline (≈ week-start karma). The empty `update` keeps it
-      // frozen on later loads the same week.
-      await this.prisma.karmaSnapshot.upsert({
-        where: {
-          accountId_weekStart: {
-            accountId: account.id,
-            weekStart: baselines.thisWeekStart,
-          },
-        },
-        create: {
-          accountId: account.id,
-          weekStart: baselines.thisWeekStart,
-          karma: stats.totalKarma,
-        },
-        update: {},
-      });
-
-      const { karmaThisWeek, karmaLastWeek } = this.computeKarmaTrend(
-        stats.totalKarma,
-        baselines.baselineThisWeek,
-        baselines.baselineLastWeek,
+      // Persist the current snapshot (karma/status/freshness) + the viewed week's
+      // cached counts + the create-only current-week karma baseline as one atomic
+      // transaction (a single DB connection), throttled by the write semaphore so a
+      // parallel large-fleet refresh can't overrun the connection pool.
+      await this.withDbSlot(() =>
+        this.prisma.$transaction([
+          this.prisma.redditAccount.update({
+            where: { id: account.id },
+            data: {
+              lastCheckedAt: new Date(),
+              status: stats.status,
+              karma: stats.totalKarma,
+            },
+          }),
+          this.prisma.accountWeekMetric.upsert({
+            where: {
+              accountId_weekStart: {
+                accountId: account.id,
+                weekStart: viewedWeekStart,
+              },
+            },
+            create: {
+              accountId: account.id,
+              weekStart: viewedWeekStart,
+              weeklyComments: comments.length,
+              weeklyPosts,
+            },
+            update: { weeklyComments: comments.length, weeklyPosts },
+          }),
+          // Write-through, create-only: the first karma seen this week becomes an
+          // immutable baseline (≈ week-start karma). The empty `update` keeps it
+          // frozen on later refreshes the same week.
+          this.prisma.karmaSnapshot.upsert({
+            where: {
+              accountId_weekStart: {
+                accountId: account.id,
+                weekStart: thisWeekStart,
+              },
+            },
+            create: {
+              accountId: account.id,
+              weekStart: thisWeekStart,
+              karma: stats.totalKarma,
+            },
+            update: {},
+          }),
+        ]),
       );
 
       return {
-        ...base,
-        status: stats.status,
-        lastCheckedAt: updated.lastCheckedAt?.toISOString() ?? null,
         weeklyComments: comments.length,
         weeklyPosts,
         karma: stats.totalKarma,
-        karmaThisWeek,
-        karmaLastWeek,
+        status: stats.status,
       };
     } catch (err) {
-      // Reason: a deleted/suspended account or a transient Reddit failure must
-      // not take down the dashboard — surface this row as an error and continue.
+      // Reason: a deleted/suspended account or a transient Reddit failure must not
+      // take down the dashboard — mark it errored and move on. Also ensure a cache
+      // row exists so this account isn't retried on the slow cold path every load;
+      // `update: {}` preserves any last-good counts on a transient blip.
       this.logger.warn(
-        `Dashboard row failed for u/${account.redditUsername}: ${
+        `Metric refresh failed for u/${account.redditUsername}: ${
           err instanceof Error ? err.message : 'unknown error'
         }`,
       );
-      return {
-        ...base,
-        status: RedditAccountStatus.error,
-        lastCheckedAt: account.lastCheckedAt?.toISOString() ?? null,
-        weeklyComments: 0,
-        weeklyPosts: 0,
-        karma: null,
-        karmaThisWeek: null,
-        karmaLastWeek: null,
-      };
+      try {
+        await this.withDbSlot(() =>
+          this.prisma.$transaction([
+            this.prisma.redditAccount.update({
+              where: { id: account.id },
+              data: {
+                lastCheckedAt: new Date(),
+                status: RedditAccountStatus.error,
+              },
+            }),
+            this.prisma.accountWeekMetric.upsert({
+              where: {
+                accountId_weekStart: {
+                  accountId: account.id,
+                  weekStart: viewedWeekStart,
+                },
+              },
+              create: {
+                accountId: account.id,
+                weekStart: viewedWeekStart,
+                weeklyComments: 0,
+                weeklyPosts: 0,
+              },
+              update: {},
+            }),
+          ]),
+        );
+      } catch (persistErr) {
+        this.logger.warn(
+          `Failed to persist error state for u/${account.redditUsername}: ${
+            persistErr instanceof Error ? persistErr.message : 'unknown error'
+          }`,
+        );
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Fire-and-forget a metric refresh for a stale account, deduped so overlapping
+   * dashboard requests don't spawn duplicate Reddit crawls for the same account
+   * and week. Errors are swallowed (already logged in `refreshAccountMetrics`).
+   */
+  private refreshInBackground(
+    account: AccountWithOwner,
+    range: DashboardRange,
+    thisWeekStart: Date,
+    viewedWeekStart: Date,
+  ): void {
+    const key = this.baselineKey(account.id, viewedWeekStart);
+    if (this.refreshingKeys.has(key)) {
+      return;
+    }
+    this.refreshingKeys.add(key);
+    void this.refreshAccountMetrics(
+      account,
+      range,
+      thisWeekStart,
+      viewedWeekStart,
+    ).finally(() => this.refreshingKeys.delete(key));
+  }
+
+  /**
+   * Run a DB write through the refresh-write semaphore, blocking until a slot is
+   * free so at most {@link MAX_CONCURRENT_REFRESH_WRITES} transactions run at once.
+   * Guards the shared connection pool when many accounts refresh in parallel.
+   */
+  private async withDbSlot<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.dbWriteActive < MAX_CONCURRENT_REFRESH_WRITES) {
+      // A slot is free — take it.
+      this.dbWriteActive += 1;
+    } else {
+      // At capacity — wait to be handed a slot directly (the active count is kept
+      // reserved for us on transfer, so no separate increment here — this avoids
+      // an overshoot race between a resumed waiter and a fresh fast-path caller).
+      await new Promise<void>((resolve) => this.dbWriteQueue.push(resolve));
+    }
+    try {
+      return await fn();
+    } finally {
+      const next = this.dbWriteQueue.shift();
+      if (next) {
+        // Transfer our slot to the next waiter; the active count stays the same.
+        next();
+      } else {
+        this.dbWriteActive -= 1;
+      }
     }
   }
 
