@@ -96,6 +96,10 @@ export class DashboardComponent {
   readonly error = signal(false);
   readonly summary = signal<DashboardSummary | null>(null);
 
+  // A user-triggered force-refresh is in flight (spins the Refresh button without
+  // blanking the page — current numbers stay on screen until the fresh ones land).
+  readonly refreshing = signal(false);
+
   // Shiller "recent comments" list (fetched separately from the summary counts).
   readonly recentLoading = signal(false);
   readonly recentComments = signal<RecentComment[]>([]);
@@ -209,11 +213,16 @@ export class DashboardComponent {
     () => (this.auth.currentUser()?.email ?? '').split('@')[0],
   );
 
-  // Delay before the silent re-fetch that picks up background-refreshed numbers.
-  private static readonly REFRESH_REFETCH_MS = 5000;
+  // Delay between silent re-fetches that pick up background-refreshed numbers.
+  private static readonly REFRESH_REFETCH_MS = 4000;
+  // Cap on chained silent re-fetches per user load, so a server that stays
+  // `refreshing` (e.g. a slow crawl) can't make us poll unbounded.
+  private static readonly MAX_SILENT_REFETCHES = 4;
   // Pending silent re-fetch timer, cleared on every new load so a range switch
   // can't leave a stale-week refetch queued.
   private refetchTimer: ReturnType<typeof setTimeout> | null = null;
+  // Remaining silent-refetch budget for the current user load (reset per load).
+  private refetchBudget = 0;
 
   constructor() {
     // Refetch the summary whenever the selected week changes (topbar pills).
@@ -223,41 +232,62 @@ export class DashboardComponent {
     });
   }
 
+  /** Force a live Reddit re-poll (cache bypass) for the current week. */
+  refreshNow(): void {
+    if (this.refreshing()) return;
+    this.load(this.rangeSvc.range(), { force: true });
+  }
+
   /**
    * Load the summary for a week; on success, kick off the shiller recent list.
    *
    * When the backend served stale numbers with a background refresh in flight
-   * (`summary.refreshing`), schedule a single silent re-fetch to swap in the
-   * fresher values once they land. A silent re-fetch neither shows the spinner nor
-   * re-arms itself, so it can't spin or flicker.
+   * (`summary.refreshing`), schedule a bounded chain of silent re-fetches to swap
+   * in the fresher values once they land — capped by {@link MAX_SILENT_REFETCHES}
+   * so it can never poll forever. Silent re-fetches don't show the spinner.
    *
    * @param range the week to load.
-   * @param silent when true, this is the follow-up refresh — no spinner, no
-   *   re-scheduling, and errors leave the current data in place.
+   * @param opts.silent follow-up refresh — no spinner, errors leave current data.
+   * @param opts.force ask the backend to bypass its cache and re-poll Reddit
+   *   synchronously; spins the Refresh button instead of blanking the page.
    */
-  private load(range: 'this-week' | 'last-week', silent = false): void {
+  private load(
+    range: 'this-week' | 'last-week',
+    opts: { silent?: boolean; force?: boolean } = {},
+  ): void {
+    const { silent = false, force = false } = opts;
     // Cancel any queued re-fetch — a new load supersedes it.
     if (this.refetchTimer !== null) {
       clearTimeout(this.refetchTimer);
       this.refetchTimer = null;
     }
     if (!silent) {
-      this.loading.set(true);
-      this.error.set(false);
+      // A fresh user load restarts the silent-refetch budget.
+      this.refetchBudget = DashboardComponent.MAX_SILENT_REFETCHES;
+      if (force) {
+        // Keep the current data visible; only spin the button.
+        this.refreshing.set(true);
+      } else {
+        this.loading.set(true);
+        this.error.set(false);
+      }
     }
-    this.reddit.dashboard(range).subscribe({
+    this.reddit.dashboard(range, force).subscribe({
       next: (summary) => {
         this.summary.set(summary);
         this.loading.set(false);
+        this.refreshing.set(false);
         // Shillers also get a live "recent comments" feed across their accounts.
         // Only on a user-driven load — the silent refresh only updates the counts.
         if (!this.isAdmin() && !silent) {
           this.loadRecentComments(summary.accounts);
         }
-        // Numbers were stale + refreshing server-side: grab the fresher ones once.
-        if (summary.refreshing && !silent) {
+        // Numbers were stale + refreshing server-side: grab the fresher ones,
+        // re-arming while the server still reports `refreshing` (bounded).
+        if (summary.refreshing && this.refetchBudget > 0) {
+          this.refetchBudget -= 1;
           this.refetchTimer = setTimeout(
-            () => this.load(range, true),
+            () => this.load(range, { silent: true }),
             DashboardComponent.REFRESH_REFETCH_MS,
           );
         }
@@ -265,8 +295,13 @@ export class DashboardComponent {
       error: () => {
         // A failed silent refresh keeps the data we already have on screen.
         if (silent) return;
+        this.refreshing.set(false);
         this.loading.set(false);
-        this.error.set(true);
+        // A failed force-refresh also keeps current data — only the initial load
+        // shows the full error state.
+        if (!force) {
+          this.error.set(true);
+        }
       },
     });
   }

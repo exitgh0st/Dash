@@ -42,7 +42,7 @@ export class RedditController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: DashboardQueryDto,
   ): Promise<DashboardSummary> {
-    return this.accounts.getDashboard(user, query.range);
+    return this.accounts.getDashboard(user, query.range, query.refresh);
   }
 
   /** Track a new Reddit account by username for the current shiller. */

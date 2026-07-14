@@ -1,4 +1,5 @@
-import { IsIn, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsIn, IsOptional } from 'class-validator';
 import type { DashboardRangeKey } from '../dashboard-summary';
 
 /**
@@ -11,4 +12,14 @@ export class DashboardQueryDto {
   @IsOptional()
   @IsIn(['this-week', 'last-week'])
   range?: DashboardRangeKey;
+
+  /**
+   * When `true`, bypass the metrics cache and re-poll Reddit synchronously for
+   * every in-scope account (a user-triggered "Refresh"). Query params arrive as
+   * strings, so coerce `"true"` to a boolean before validation.
+   */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  refresh?: boolean;
 }

@@ -94,7 +94,11 @@ model AccountWeekMetric {
   weekStart      DateTime // Monday 00:00 (local) of the summarized week
   weeklyComments Int
   weeklyPosts    Int
-  refreshedAt    DateTime      @updatedAt // last time these counts were re-polled
+  // Last time these counts were successfully re-polled. Set EXPLICITLY (not
+  // @updatedAt) so a failed/no-op refresh write doesn't bump it — only a genuine
+  // successful re-poll marks the row fresh, otherwise it stays stale and keeps
+  // getting retried (see refreshAccountMetrics).
+  refreshedAt    DateTime
 
   // One cached metric per (account, week); the refresh upsert relies on this.
   @@unique([accountId, weekStart])

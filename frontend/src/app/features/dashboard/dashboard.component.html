@@ -22,6 +22,20 @@
   </div>
 } @else {
   <div class="fade">
+    <!-- Refresh forces a live Reddit re-poll (cache bypass); spins while in flight
+         without blanking the current numbers. Shared by both role views. -->
+    <div class="dash-head">
+      <button
+        class="btn-refresh"
+        type="button"
+        (click)="refreshNow()"
+        [disabled]="refreshing()"
+        [attr.aria-busy]="refreshing()"
+      >
+        <svg class="ico" [class.spin]="refreshing()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+        {{ refreshing() ? 'Refreshing…' : 'Refresh' }}
+      </button>
+    </div>
     <!-- ================= Admin (manager) view ================= -->
     @if (isAdmin()) {
       <div class="kpi-grid kpi-grid-4">

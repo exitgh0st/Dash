@@ -27,9 +27,19 @@ export class RedditAccountsService {
   /**
    * Fetch the role-scoped dashboard summary (KPIs + per-account weekly metrics)
    * for the given week. Admins get all accounts; shillers get only their own.
+   *
+   * @param range which week to summarize.
+   * @param force when true, ask the backend to bypass its metrics cache and
+   *   re-poll Reddit synchronously (a user-triggered "Refresh").
    */
-  dashboard(range: DashboardRange = 'this-week'): Observable<DashboardSummary> {
-    const params = new HttpParams().set('range', range);
+  dashboard(
+    range: DashboardRange = 'this-week',
+    force = false,
+  ): Observable<DashboardSummary> {
+    let params = new HttpParams().set('range', range);
+    if (force) {
+      params = params.set('refresh', 'true');
+    }
     return this.http.get<DashboardSummary>(`${this.baseUrl}/dashboard`, {
       params,
     });

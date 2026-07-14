@@ -150,10 +150,14 @@ export class RedditAccountsService {
    *
    * @param requester the authenticated principal (role decides scope).
    * @param rangeKey which week to summarize; defaults to the current week.
+   * @param force when true, bypass the staleness check and re-poll Reddit
+   *   synchronously for every in-scope account (a user-triggered "Refresh"), so
+   *   the response reflects Reddit's current state rather than the cache.
    */
   async getDashboard(
     requester: AuthenticatedUser,
     rangeKey: DashboardRangeKey = 'this-week',
+    force = false,
   ): Promise<DashboardSummary> {
     const range = resolveRange(rangeKey);
     const isAdmin = requester.role === 'admin';
@@ -190,21 +194,27 @@ export class RedditAccountsService {
     ]);
 
     const now = Date.now();
+    // A forced refresh re-polls every account synchronously (cache bypass); a
+    // normal load only refreshes cold rows inline and stale rows in the background.
     // Cold = no cached row yet → must refresh synchronously so the row isn't empty.
     const coldAccounts = accounts.filter((a) => !metrics.get(a.id));
+    const syncAccounts = force ? accounts : coldAccounts;
     // Stale = cached but older than the window → serve stale, refresh in background.
-    const staleAccounts = accounts.filter((a) => {
-      const m = metrics.get(a.id);
-      return (
-        m !== undefined && now - m.refreshedAt.getTime() > METRICS_STALE_MS
-      );
-    });
+    // Skipped entirely on a forced load (every account is refreshed synchronously).
+    const staleAccounts = force
+      ? []
+      : accounts.filter((a) => {
+          const m = metrics.get(a.id);
+          return (
+            m !== undefined && now - m.refreshedAt.getTime() > METRICS_STALE_MS
+          );
+        });
 
-    // Populate cold accounts up front (parallelized). Their fresh figures are used
-    // directly for this response; the cache is now warm for subsequent loads.
+    // Populate the synchronous set up front (parallelized). Their fresh figures are
+    // used directly for this response; the cache is now warm for subsequent loads.
     const freshByAccount = new Map<string, RefreshedFigures | null>();
     await Promise.all(
-      coldAccounts.map(async (account) => {
+      syncAccounts.map(async (account) => {
         freshByAccount.set(
           account.id,
           await this.refreshAccountMetrics(
@@ -464,8 +474,15 @@ export class RedditAccountsService {
               weekStart: viewedWeekStart,
               weeklyComments: comments.length,
               weeklyPosts,
+              // Explicit now that `refreshedAt` isn't @updatedAt — this is a
+              // genuine successful re-poll, so mark the row fresh.
+              refreshedAt: new Date(),
             },
-            update: { weeklyComments: comments.length, weeklyPosts },
+            update: {
+              weeklyComments: comments.length,
+              weeklyPosts,
+              refreshedAt: new Date(),
+            },
           }),
           // Write-through, create-only: the first karma seen this week becomes an
           // immutable baseline (≈ week-start karma). The empty `update` keeps it
@@ -495,9 +512,12 @@ export class RedditAccountsService {
       };
     } catch (err) {
       // Reason: a deleted/suspended account or a transient Reddit failure must not
-      // take down the dashboard — mark it errored and move on. Also ensure a cache
-      // row exists so this account isn't retried on the slow cold path every load;
-      // `update: {}` preserves any last-good counts on a transient blip.
+      // take down the dashboard — mark it errored and move on. Ensure a cache row
+      // exists so a cold account isn't retried on the slow *synchronous* path every
+      // load — but stamp it as immediately stale (epoch 0) so it's re-polled in the
+      // *background* next load until it succeeds. `update: {}` preserves any
+      // last-good counts AND the prior `refreshedAt` (no longer @updatedAt), so a
+      // transient blip can't reset the staleness clock and freeze a stale count.
       this.logger.warn(
         `Metric refresh failed for u/${account.redditUsername}: ${
           err instanceof Error ? err.message : 'unknown error'
@@ -525,6 +545,9 @@ export class RedditAccountsService {
                 weekStart: viewedWeekStart,
                 weeklyComments: 0,
                 weeklyPosts: 0,
+                // Epoch 0 → the row reads as stale forever until a real refresh
+                // succeeds, so it's retried in the background rather than looking fresh.
+                refreshedAt: new Date(0),
               },
               update: {},
             }),
