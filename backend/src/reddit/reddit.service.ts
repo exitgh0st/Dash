@@ -401,10 +401,12 @@ export class RedditService {
         );
         url.searchParams.set('limit', String(COMMENTS_PAGE_LIMIT));
         url.searchParams.set('raw_json', '1'); // don't HTML-escape comment bodies
-        // No explicit `sort`: the user comments listing is already newest-first by
-        // default, which the descending-crawl early-break below relies on. Passing
-        // `sort=new` makes Reddit serve a stale sorted-listing edge cache, freezing
-        // counts at old values — so we deliberately omit it.
+        // No explicit `sort`: the user comments listing is already newest-first
+        // by default, which the descending-crawl early-break below relies on, so
+        // there's nothing to set.
+        // Note: a count lower than expected is usually NOT a bug — a subreddit
+        // that removes/filters an account's comments drops them from this public
+        // listing, so Reddit legitimately returns fewer than were posted.
         if (after) {
           url.searchParams.set('after', after);
         }
@@ -492,7 +494,7 @@ export class RedditService {
         url.searchParams.set('limit', String(COMMENTS_PAGE_LIMIT));
         url.searchParams.set('raw_json', '1');
         // Same as getComments: omit `sort` and rely on the default newest-first
-        // listing. `sort=new` triggers Reddit's stale sorted-listing cache.
+        // listing that the descending early-break crawl relies on.
         if (after) {
           url.searchParams.set('after', after);
         }
