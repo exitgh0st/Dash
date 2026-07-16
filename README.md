@@ -1,8 +1,8 @@
 # Dash
 
-![version](https://img.shields.io/badge/version-0.0.2-2b90d9)
+![version](https://img.shields.io/badge/version-0.1.0-2b90d9)
 
-**Version:** 0.0.2
+**Version:** 0.1.0
 
 Full-stack web app for tracking Reddit karma-farming work across a team of accounts.
 
