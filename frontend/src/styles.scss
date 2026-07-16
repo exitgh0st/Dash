@@ -469,6 +469,35 @@ body {
   color: var(--green);
 }
 
+// Segmented pill toggle (e.g. Newest / Most upvoted). Mirrors the topbar
+// week-range `.range-pills` so both controls read as one system. Global so the
+// comments + history pages share it without a Material select module.
+.seg-pills {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 3px;
+}
+.seg-pills button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.14s;
+}
+.seg-pills button.on {
+  background: var(--panel-2);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
 // Stack the two-column layout on narrow screens.
 @media (max-width: 1000px) {
   .kpi-grid {

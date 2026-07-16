@@ -41,6 +41,24 @@ export class HistoryComponent implements OnInit {
   readonly error = signal(false);
   readonly comments = signal<HistoryComment[]>([]);
 
+  /** Active sort mode for the feed: newest-first (default) or most-upvoted. */
+  readonly sort = signal<'newest' | 'top'>('newest');
+
+  /**
+   * The feed reordered for display per the active sort. Client-side only — never
+   * mutates the source `comments()` array and issues no network request.
+   * Reason: this sorts the already-loaded, recency-capped feed (the 40 most
+   * recent merged comments), so "Most upvoted" ranks that recent window, not an
+   * all-time top query — consistent with History being a recent-activity view.
+   */
+  readonly sortedComments = computed<HistoryComment[]>(() => {
+    const list = this.comments();
+    if (this.sort() === 'newest') return list;
+    return [...list].sort(
+      (a, b) => b.score - a.score || b.createdUtc.localeCompare(a.createdUtc),
+    );
+  });
+
   ngOnInit(): void {
     this.load();
   }
@@ -95,6 +113,11 @@ export class HistoryComponent implements OnInit {
       },
       error: () => this.failLoad(),
     });
+  }
+
+  /** Switch the display sort. Purely reorders the loaded feed — no re-fetch. */
+  setSort(mode: 'newest' | 'top'): void {
+    this.sort.set(mode);
   }
 
   private failLoad(): void {

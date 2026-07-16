@@ -43,6 +43,12 @@
   gap: 8px;
 }
 
+// Sort toggle row sits between the filter and the comment list.
+.sort-bar {
+  display: flex;
+  margin-bottom: 16px;
+}
+
 .state-center {
   display: flex;
   flex-direction: column;

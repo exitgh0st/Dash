@@ -63,6 +63,23 @@ export class AccountCommentsComponent implements OnInit {
   /** Live count of the comments currently shown. */
   readonly count = computed(() => this.comments().length);
 
+  /** Active sort mode for the list: newest-first (default) or most-upvoted. */
+  readonly sort = signal<'newest' | 'top'>('newest');
+
+  /**
+   * The comments reordered for display per the active sort. Client-side only —
+   * never mutates the source `comments()` array and issues no network request.
+   * `newest` returns the source as-is (the backend already yields newest-first);
+   * `top` sorts a copy by score desc, breaking ties by most-recent.
+   */
+  readonly sortedComments = computed<RedditComment[]>(() => {
+    const list = this.comments();
+    if (this.sort() === 'newest') return list;
+    return [...list].sort(
+      (a, b) => b.score - a.score || b.createdUtc.localeCompare(a.createdUtc),
+    );
+  });
+
   /** Date-range filter (both optional). Applying re-queries with ISO bounds. */
   readonly range = new FormGroup({
     start: new FormControl<Date | null>(null),
@@ -100,6 +117,11 @@ export class AccountCommentsComponent implements OnInit {
         this.snackBar.open(message, 'Dismiss', { duration: 4000 });
       },
     });
+  }
+
+  /** Switch the display sort. Purely reorders the loaded list — no re-fetch. */
+  setSort(mode: 'newest' | 'top'): void {
+    this.sort.set(mode);
   }
 
   /** Re-query with the currently selected date range. */

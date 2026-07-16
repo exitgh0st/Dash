@@ -47,6 +47,18 @@
   </div>
 </form>
 
+<!-- Client-side sort toggle: reorders the loaded comments, never re-fetches. -->
+<div class="sort-bar">
+  <div class="seg-pills">
+    <button type="button" [class.on]="sort() === 'newest'" (click)="setSort('newest')">
+      Newest
+    </button>
+    <button type="button" [class.on]="sort() === 'top'" (click)="setSort('top')">
+      Most upvoted
+    </button>
+  </div>
+</div>
+
 @if (loading()) {
   <!-- Loading state -->
   <div class="state-center">
@@ -63,13 +75,18 @@
 } @else {
   <!-- Populated state: newest-first list of comment cards (works down to 375px). -->
   <div class="comment-list">
-    @for (comment of comments(); track comment.id) {
+    @for (comment of sortedComments(); track comment.id) {
       <mat-card class="comment-card" appearance="outlined">
         <mat-card-content>
           <div class="comment-meta">
             <span class="subreddit">r/{{ comment.subreddit }}</span>
             <span class="dot">·</span>
             <span class="date">{{ comment.createdUtc | date: 'medium' }}</span>
+            <!-- Upvote score, styled like Activity History (green when >= 0). -->
+            <span class="eng" [class.pos]="comment.score >= 0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+              {{ comment.score }}
+            </span>
             <!-- Open the actual comment on reddit.com in a new tab. -->
             <a
               mat-icon-button
