@@ -57,6 +57,34 @@ Living memory of the Dash project. Read this first in every session (or run `/re
 
 _Planned but not started. `/plan-feature` appends here; `/implement-feature` reads from here or takes an ad-hoc description._
 
+### Show comment upvotes + sort-by-most-upvoted
+**Scope:** frontend only — no backend/DTO/Prisma/migration changes.
+**Depends on:** existing `RedditComment.score` (already populated end-to-end), global `.eng`/`.eng.pos` score classes in `styles.scss`, the `.range-pills` pill pattern in `app-shell.component.scss`.
+
+**Objective:** Show each comment's upvote score on the per-account comments list page (it's already in the model but not rendered), and add a **Newest / Most upvoted** segmented-pill sort to both that page and Activity History (which serves both roles). The score already flows from Reddit → `RedditService.getComments` → `RedditComment.score` → frontend model, and History already renders it — so this is purely: render `score` on the comments page + client-side sort on both pages.
+
+**Decisions (confirmed):** two sort options only (Newest default, Most upvoted); UI = segmented pills matching the topbar week-range toggle (no new Material module — avoids `MatSelectModule`). Sort is client-side over already-loaded comments — no new API calls, never mutates the source signal array.
+
+**Frontend changes:**
+- `frontend/src/styles.scss` — add a global `.seg-pills` (+ `button` / `button.on`) block, copied from `.range-pills` in `app-shell.component.scss:210-235`, so both pages share the segmented toggle.
+- `features/reddit/account-comments.component.ts` — `sort = signal<'newest'|'top'>('newest')` + `setSort()` + `sortedComments` computed (`'newest'` = `comments()` as-is since backend is newest-first; `'top'` = copied array sorted by `score` desc, tiebreak `createdUtc` desc). `count` keeps counting `comments()`.
+- `features/reddit/account-comments.component.html` — render score per card via global `.eng`/`.eng.pos` + up-arrow SVG (mirror `history.component.html:36-39`); add `.seg-pills` toggle near the date-range `.filter`; iterate `sortedComments()`. Keep the date-range filter unchanged (sort layers on top).
+- `features/history/history.component.ts` — same `sort` signal + `setSort` + `sortedComments` computed over the existing merged top-40 `comments()` feed.
+- `features/history/history.component.html` — add `.seg-pills` near the "Comment history" `.section-head`; iterate `sortedComments()`. Post-history placeholder untouched.
+
+**Accepted limitation:** History sort operates over the already-loaded feed (40 most-recent merged comments, `MAX_HISTORY_ITEMS`), so "Most upvoted" ranks the recent feed, not an all-time top query — consistent with History being a recent-activity view. Flag with a `// Reason:` comment.
+
+**Acceptance criteria:**
+- Each comment card on `/reddit-accounts/:accountId/comments` shows its score (green when ≥ 0), matching History's styling.
+- Both pages show a Newest / Most upvoted pill toggle; Most upvoted reorders by score desc, Newest restores exact original order; History toggle works for both admin and shiller.
+- Sort triggers no network request and never mutates the source list; date-range filter still composes with the sort on the comments page.
+- Both pages responsive at 375px and 1440px.
+
+**Files to touch:**
+- create/modify: `frontend/src/styles.scss`
+- modify: `frontend/src/app/features/reddit/account-comments.component.{ts,html}`
+- modify: `frontend/src/app/features/history/history.component.{ts,html}`
+
 ---
 
 ## Completed
