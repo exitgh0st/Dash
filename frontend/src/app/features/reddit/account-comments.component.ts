@@ -63,6 +63,14 @@ export class AccountCommentsComponent implements OnInit {
   /** Live count of the comments currently shown. */
   readonly count = computed(() => this.comments().length);
 
+  /**
+   * This week's total comment count, shown in the header ("X comments this week").
+   * Captured from the initial this-week load and deliberately NOT changed when the
+   * user filters the list to another range — the header always reflects the week.
+   * Null until the first load lands (the template falls back to the live count).
+   */
+  readonly weeklyCount = signal<number | null>(null);
+
   /** Active sort mode for the list: newest-first (default) or most-upvoted. */
   readonly sort = signal<'newest' | 'top'>('newest');
 
@@ -80,19 +88,29 @@ export class AccountCommentsComponent implements OnInit {
     );
   });
 
-  /** Date-range filter (both optional). Applying re-queries with ISO bounds. */
+  /**
+   * Date-range filter, defaulted to *this week* (Monday → today) so the page opens
+   * on the current week's comments rather than the account's entire history.
+   */
   readonly range = new FormGroup({
-    start: new FormControl<Date | null>(null),
-    end: new FormControl<Date | null>(null),
+    start: new FormControl<Date | null>(startOfWeek(new Date())),
+    end: new FormControl<Date | null>(new Date()),
   });
 
   ngOnInit(): void {
     this.accountId = this.route.snapshot.paramMap.get('accountId') ?? '';
-    this.load();
+    // The initial range is this week, so capture the weekly total from this load.
+    this.load({ updateWeekly: true });
   }
 
-  /** Fetch comments for the current account within the selected date range. */
-  private load(): void {
+  /**
+   * Fetch comments for the current account within the selected date range.
+   *
+   * @param opts.updateWeekly when true, also set {@link weeklyCount} from this
+   *   response — only passed when the active range is this week (initial load /
+   *   clear), so the weekly total stays put while the user filters to other ranges.
+   */
+  private load(opts: { updateWeekly?: boolean } = {}): void {
     this.loading.set(true);
 
     // Expand the picked calendar days to full-day ISO bounds: start → 00:00,
@@ -105,6 +123,11 @@ export class AccountCommentsComponent implements OnInit {
       next: (res) => {
         this.username.set(res.account.redditUsername);
         this.comments.set(res.comments);
+        // Only refresh the weekly total on a this-week load, so filtering the list
+        // to another range doesn't overwrite the header's weekly count.
+        if (opts.updateWeekly) {
+          this.weeklyCount.set(res.comments.length);
+        }
         this.loading.set(false);
       },
       error: (err: HttpErrorResponse) => {
@@ -129,16 +152,29 @@ export class AccountCommentsComponent implements OnInit {
     this.load();
   }
 
-  /** Reset the date range and reload the default most-recent view. */
+  /** Reset the date range back to this week (the default) and reload both views. */
   clearFilter(): void {
-    this.range.reset();
-    this.load();
+    this.range.setValue({ start: startOfWeek(new Date()), end: new Date() });
+    this.load({ updateWeekly: true });
   }
 
   /** Navigate back to wherever the user came from (shiller detail or accounts). */
   goBack(): void {
     this.location.back();
   }
+}
+
+/**
+ * Monday 00:00:00.000 (local) of the week containing `date`. Mirrors the backend's
+ * week boundary (reddit-accounts.service.ts) so "this week" means the same span here.
+ */
+function startOfWeek(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  // getDay(): 0=Sun..6=Sat. `(day + 6) % 7` = days elapsed since Monday.
+  const daysSinceMonday = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - daysSinceMonday);
+  return d;
 }
 
 /** Start of the given calendar day (local time). */
