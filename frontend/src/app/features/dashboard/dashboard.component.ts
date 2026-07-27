@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { RouterLink } from '@angular/router';
-import { catchError, forkJoin, map, of } from 'rxjs';
+import { catchError, concatMap, forkJoin, from, map, of } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { DashboardRangeService } from '../../core/dashboard/dashboard-range.service';
 import { RedditAccountsService } from '../../core/reddit/reddit-accounts.service';
@@ -96,9 +96,15 @@ export class DashboardComponent {
   readonly error = signal(false);
   readonly summary = signal<DashboardSummary | null>(null);
 
-  // A user-triggered force-refresh is in flight (spins the Refresh button without
-  // blanking the page — current numbers stay on screen until the fresh ones land).
+  // A user-triggered refresh is in flight. It walks accounts one-by-one (never one
+  // giant request), patching each row as it lands — the current numbers stay on
+  // screen the whole time, so this never blanks the page.
   readonly refreshing = signal(false);
+  // Progress of the sequential walk, surfaced on the button as "Refreshing X of N…".
+  readonly refreshProgress = signal<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  });
 
   // Shiller "recent comments" list (fetched separately from the summary counts).
   readonly recentLoading = signal(false);
@@ -232,10 +238,66 @@ export class DashboardComponent {
     });
   }
 
-  /** Force a live Reddit re-poll (cache bypass) for the current week. */
+  /**
+   * User-triggered refresh: re-poll every in-scope account from Reddit, one at a
+   * time, patching each account's row the moment its fresh numbers land.
+   *
+   * Sequential by design — `concatMap` runs the per-account requests strictly in
+   * order (one open request at a time), which both matches Reddit's 60/min gate and
+   * avoids the old single all-accounts request that blew past the request timeout.
+   * A failed account (`catchError → of(null)`) is skipped so the walk continues.
+   * When the walk finishes, one silent reload reconciles the KPIs/charts from the
+   * now-warm cache (a DB-only read, no fresh Reddit crawl).
+   */
   refreshNow(): void {
+    // Guard: ignore re-clicks while running, and no-op when there's nothing to refresh.
     if (this.refreshing()) return;
-    this.load(this.rangeSvc.range(), { force: true });
+    const ids = this.accounts().map((a) => a.id);
+    if (ids.length === 0) return;
+
+    const range = this.rangeSvc.range();
+    this.refreshing.set(true);
+    this.refreshProgress.set({ done: 0, total: ids.length });
+
+    from(ids)
+      .pipe(
+        // One account at a time; tolerate a dead account without aborting the rest.
+        concatMap((id) =>
+          this.reddit
+            .refreshAccount(id, range)
+            .pipe(catchError(() => of(null))),
+        ),
+      )
+      .subscribe({
+        next: (row) => {
+          // Patch the refreshed row into the summary in place so the table updates
+          // live; a null (failed) row leaves the account's prior values untouched.
+          if (row) {
+            const s = this.summary();
+            if (s) {
+              this.summary.set({
+                ...s,
+                accounts: s.accounts.map((a) => (a.id === row.id ? row : a)),
+              });
+            }
+          }
+          this.refreshProgress.update((p) => ({ ...p, done: p.done + 1 }));
+        },
+        complete: () => {
+          this.refreshing.set(false);
+          // Reconcile KPIs + charts from the warm cache (DB-only, no Reddit crawl).
+          this.load(range, { silent: true });
+          // Shillers also get their recent-comments feed refreshed from fresh data.
+          if (!this.isAdmin()) {
+            this.loadRecentComments(this.accounts());
+          }
+        },
+        error: () => {
+          // Defensive: the inner catchError should prevent this, but never leave the
+          // button stuck spinning if the stream errors for any reason.
+          this.refreshing.set(false);
+        },
+      });
   }
 
   /**
@@ -248,14 +310,12 @@ export class DashboardComponent {
    *
    * @param range the week to load.
    * @param opts.silent follow-up refresh — no spinner, errors leave current data.
-   * @param opts.force ask the backend to bypass its cache and re-poll Reddit
-   *   synchronously; spins the Refresh button instead of blanking the page.
    */
   private load(
     range: 'this-week' | 'last-week',
-    opts: { silent?: boolean; force?: boolean } = {},
+    opts: { silent?: boolean } = {},
   ): void {
-    const { silent = false, force = false } = opts;
+    const { silent = false } = opts;
     // Cancel any queued re-fetch — a new load supersedes it.
     if (this.refetchTimer !== null) {
       clearTimeout(this.refetchTimer);
@@ -264,19 +324,13 @@ export class DashboardComponent {
     if (!silent) {
       // A fresh user load restarts the silent-refetch budget.
       this.refetchBudget = DashboardComponent.MAX_SILENT_REFETCHES;
-      if (force) {
-        // Keep the current data visible; only spin the button.
-        this.refreshing.set(true);
-      } else {
-        this.loading.set(true);
-        this.error.set(false);
-      }
+      this.loading.set(true);
+      this.error.set(false);
     }
-    this.reddit.dashboard(range, force).subscribe({
+    this.reddit.dashboard(range).subscribe({
       next: (summary) => {
         this.summary.set(summary);
         this.loading.set(false);
-        this.refreshing.set(false);
         // Shillers also get a live "recent comments" feed across their accounts.
         // Only on a user-driven load — the silent refresh only updates the counts.
         if (!this.isAdmin() && !silent) {
@@ -295,13 +349,8 @@ export class DashboardComponent {
       error: () => {
         // A failed silent refresh keeps the data we already have on screen.
         if (silent) return;
-        this.refreshing.set(false);
         this.loading.set(false);
-        // A failed force-refresh also keeps current data — only the initial load
-        // shows the full error state.
-        if (!force) {
-          this.error.set(true);
-        }
+        this.error.set(true);
       },
     });
   }

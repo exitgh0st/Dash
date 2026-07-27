@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   AccountComments,
+  DashboardAccountRow,
   DashboardRange,
   DashboardSummary,
   RedditAccount,
@@ -29,20 +30,32 @@ export class RedditAccountsService {
    * for the given week. Admins get all accounts; shillers get only their own.
    *
    * @param range which week to summarize.
-   * @param force when true, ask the backend to bypass its metrics cache and
-   *   re-poll Reddit synchronously (a user-triggered "Refresh").
    */
-  dashboard(
-    range: DashboardRange = 'this-week',
-    force = false,
-  ): Observable<DashboardSummary> {
-    let params = new HttpParams().set('range', range);
-    if (force) {
-      params = params.set('refresh', 'true');
-    }
+  dashboard(range: DashboardRange = 'this-week'): Observable<DashboardSummary> {
+    const params = new HttpParams().set('range', range);
     return this.http.get<DashboardSummary>(`${this.baseUrl}/dashboard`, {
       params,
     });
+  }
+
+  /**
+   * Force-refresh a single account from Reddit and return its updated dashboard row.
+   * The dashboard calls this once per account, sequentially, so a fleet refresh is
+   * split into many small requests instead of one that times out.
+   *
+   * @param accountId the account to refresh.
+   * @param range which week's counts to refresh (defaults to the current week).
+   */
+  refreshAccount(
+    accountId: string,
+    range: DashboardRange = 'this-week',
+  ): Observable<DashboardAccountRow> {
+    const params = new HttpParams().set('range', range);
+    return this.http.post<DashboardAccountRow>(
+      `${this.baseUrl}/accounts/${accountId}/refresh`,
+      null,
+      { params },
+    );
   }
 
   /**

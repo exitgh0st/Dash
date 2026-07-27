@@ -1,3 +1,10 @@
+// Anchor all Date math (especially the weekly karma baseline's `weekStart`) to UTC
+// so the hosted server and any local dev machine agree on week boundaries — without
+// this, a UTC+8 dev box computes a different Monday and reads/writes a different
+// KarmaSnapshot than production. Node applies process.env.TZ to subsequent Date
+// operations, and this runs before any request. An explicit OS/shell/.env TZ wins.
+process.env.TZ = process.env.TZ ?? 'UTC';
+
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';

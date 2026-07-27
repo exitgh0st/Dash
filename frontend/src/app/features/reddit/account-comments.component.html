@@ -10,8 +10,11 @@
         Comments
       }
     </h1>
-    <!-- Live count of what's currently shown (reflects the active filter). -->
-    <span class="comments-subtitle">{{ count() }} comments</span>
+    <!-- Always shows THIS WEEK's total (independent of the active filter); falls
+         back to the live filtered count until the weekly total has loaded. -->
+    <span class="comments-subtitle"
+      >{{ weeklyCount() ?? count() }} comments this week</span
+    >
   </div>
 </div>
 
