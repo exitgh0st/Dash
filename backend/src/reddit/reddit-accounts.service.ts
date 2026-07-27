@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { Prisma, RedditAccountStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedditService } from './reddit.service';
@@ -342,6 +343,80 @@ export class RedditAccountsService {
       baselineLastWeek:
         baselines.get(this.baselineKey(accountId, lastWeekStart)) ?? null,
     });
+  }
+
+  /**
+   * Weekly scheduled job: snapshot every tracked account's total karma at the start
+   * of the new week, so "karma this week" (`liveKarma − thisWeekBaseline`) is exact
+   * from the true week boundary rather than from whenever the first dashboard load
+   * of the week happens to poll an account.
+   *
+   * Runs Monday 00:05 UTC (a few minutes past midnight so `new Date()` is safely
+   * inside the new week; the process is pinned to UTC in `main.ts`, so `weekStart`
+   * here matches the request path's). The baseline write is **create-only**, so this
+   * coexists with the lazy write-through in {@link refreshAccountMetrics}: whichever
+   * fires first this week wins and the other is a no-op (both ≈ week-start karma).
+   *
+   * Best-effort and isolated: one account's Reddit failure is logged and skipped so
+   * the rest still get a baseline. Reddit reads are naturally serialized by the
+   * shared 60/min throttle in RedditService.
+   */
+  @Cron('5 0 * * 1', { name: 'weekly-karma-baseline', timeZone: 'UTC' })
+  async captureWeeklyBaselines(): Promise<void> {
+    const weekStart = startOfWeek(new Date());
+    const accounts = await this.prisma.redditAccount.findMany({
+      select: { id: true, redditUsername: true },
+    });
+    this.logger.log(
+      `Weekly karma baseline: capturing ${accounts.length} account(s) for week ${weekStart.toISOString()}`,
+    );
+
+    let captured = 0;
+    // Sequential: a weekly background job — simplicity over speed, and it keeps well
+    // under the shared Reddit rate limit without extra concurrency bookkeeping.
+    for (const account of accounts) {
+      try {
+        const stats = await this.reddit.getAccountStats(account.redditUsername);
+        // One transaction: refresh the current snapshot AND seed the create-only
+        // week-start baseline. `update: {}` keeps an already-seeded baseline frozen.
+        await this.withDbSlot(() =>
+          this.prisma.$transaction([
+            this.prisma.redditAccount.update({
+              where: { id: account.id },
+              data: {
+                karma: stats.totalKarma,
+                status: stats.status,
+                lastCheckedAt: new Date(),
+              },
+            }),
+            this.prisma.karmaSnapshot.upsert({
+              where: {
+                accountId_weekStart: { accountId: account.id, weekStart },
+              },
+              create: {
+                accountId: account.id,
+                weekStart,
+                karma: stats.totalKarma,
+              },
+              update: {},
+            }),
+          ]),
+        );
+        captured += 1;
+      } catch (err) {
+        // Reason: a dead/suspended account or transient Reddit failure must not
+        // abort the whole weekly sweep — log it and move to the next account.
+        this.logger.warn(
+          `Weekly karma baseline failed for u/${account.redditUsername}: ${
+            err instanceof Error ? err.message : 'unknown error'
+          }`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Weekly karma baseline: captured ${captured}/${accounts.length} account(s)`,
+    );
   }
 
   /**
