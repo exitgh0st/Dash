@@ -150,14 +150,10 @@ export class RedditAccountsService {
    *
    * @param requester the authenticated principal (role decides scope).
    * @param rangeKey which week to summarize; defaults to the current week.
-   * @param force when true, bypass the staleness check and re-poll Reddit
-   *   synchronously for every in-scope account (a user-triggered "Refresh"), so
-   *   the response reflects Reddit's current state rather than the cache.
    */
   async getDashboard(
     requester: AuthenticatedUser,
     rangeKey: DashboardRangeKey = 'this-week',
-    force = false,
   ): Promise<DashboardSummary> {
     const range = resolveRange(rangeKey);
     const isAdmin = requester.role === 'admin';
@@ -194,21 +190,17 @@ export class RedditAccountsService {
     ]);
 
     const now = Date.now();
-    // A forced refresh re-polls every account synchronously (cache bypass); a
-    // normal load only refreshes cold rows inline and stale rows in the background.
     // Cold = no cached row yet → must refresh synchronously so the row isn't empty.
-    const coldAccounts = accounts.filter((a) => !metrics.get(a.id));
-    const syncAccounts = force ? accounts : coldAccounts;
+    // Reason: this is the only Reddit work allowed in the request path — crawling
+    // the whole fleet inline (the old force-refresh) blew past the request timeout.
+    const syncAccounts = accounts.filter((a) => !metrics.get(a.id));
     // Stale = cached but older than the window → serve stale, refresh in background.
-    // Skipped entirely on a forced load (every account is refreshed synchronously).
-    const staleAccounts = force
-      ? []
-      : accounts.filter((a) => {
-          const m = metrics.get(a.id);
-          return (
-            m !== undefined && now - m.refreshedAt.getTime() > METRICS_STALE_MS
-          );
-        });
+    const staleAccounts = accounts.filter((a) => {
+      const m = metrics.get(a.id);
+      return (
+        m !== undefined && now - m.refreshedAt.getTime() > METRICS_STALE_MS
+      );
+    });
 
     // Populate the synchronous set up front (parallelized). Their fresh figures are
     // used directly for this response; the cache is now warm for subsequent loads.
@@ -273,6 +265,83 @@ export class RedditAccountsService {
       // accounts leave fresher numbers pending — cold ones were refreshed inline.
       refreshing: staleAccounts.length > 0 ? true : undefined,
     };
+  }
+
+  /**
+   * Force-refresh a *single* account from Reddit and return its updated dashboard
+   * row. This is the per-account unit the client walks sequentially when the user
+   * presses "Refresh" — refreshing the whole fleet in one request used to blow past
+   * the request timeout, so the work is now split one account at a time.
+   *
+   * Scoped exactly like {@link getAccountComments}: an admin may refresh any account;
+   * a shiller may refresh only their own. A missing or not-owned account throws
+   * NotFoundException (not Forbidden) so account existence isn't leaked.
+   *
+   * @param requester the authenticated principal (role decides scope).
+   * @param accountId the account to refresh.
+   * @param rangeKey which week's counts to refresh; defaults to the current week.
+   * @returns the freshly-refreshed dashboard row (same shape as a getDashboard row).
+   * @throws NotFoundException if the account is missing or not the caller's.
+   */
+  async refreshAccountRow(
+    requester: AuthenticatedUser,
+    accountId: string,
+    rangeKey: DashboardRangeKey = 'this-week',
+  ): Promise<DashboardAccountRow> {
+    const isAdmin = requester.role === 'admin';
+
+    // Join the owner so assembleRow has email/quota data (admin-only fields).
+    const account = await this.prisma.redditAccount.findUnique({
+      where: { id: accountId },
+      include: {
+        user: {
+          select: {
+            email: true,
+            weeklyCommentQuota: true,
+            weeklyPostQuota: true,
+          },
+        },
+      },
+    });
+    // NotFound (not Forbidden) for a non-owning shiller — don't leak existence.
+    if (!account || (!isAdmin && account.userId !== requester.userId)) {
+      throw new NotFoundException('Reddit account not found.');
+    }
+
+    // Same week derivation as getDashboard: the karma baseline is always anchored
+    // to the current week, while the viewed week decides which cached counts to read.
+    const range = resolveRange(rangeKey);
+    const thisWeekStart = startOfWeek(new Date());
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const viewedWeekStart =
+      rangeKey === 'last-week' ? lastWeekStart : thisWeekStart;
+
+    // One account's worth of Reddit work (comments + posts + /about), safely inside
+    // the request timeout. Isolated: returns null (marks the account error) instead
+    // of throwing, so a dead account still yields a well-formed error row.
+    const fresh = await this.refreshAccountMetrics(
+      account,
+      range,
+      thisWeekStart,
+      viewedWeekStart,
+    );
+
+    // Two cheap DB reads for this one account: karma baselines + the cached metric
+    // (the refresh above just wrote both, so these reflect the fresh values).
+    const [baselines, metrics] = await Promise.all([
+      this.loadKarmaBaselines([accountId], thisWeekStart, lastWeekStart),
+      this.loadWeekMetrics([accountId], viewedWeekStart),
+    ]);
+
+    return this.assembleRow(account, isAdmin, {
+      metric: metrics.get(accountId) ?? null,
+      fresh,
+      baselineThisWeek:
+        baselines.get(this.baselineKey(accountId, thisWeekStart)) ?? null,
+      baselineLastWeek:
+        baselines.get(this.baselineKey(accountId, lastWeekStart)) ?? null,
+    });
   }
 
   /**

@@ -15,7 +15,7 @@ import {
 import { AddRedditAccountDto } from './dto/add-reddit-account.dto';
 import { GetCommentsQueryDto } from './dto/get-comments-query.dto';
 import { DashboardQueryDto } from './dto/dashboard-query.dto';
-import { DashboardSummary } from './dashboard-summary';
+import { DashboardAccountRow, DashboardSummary } from './dashboard-summary';
 import { PublicRedditAccount } from './public-reddit-account';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -42,7 +42,7 @@ export class RedditController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: DashboardQueryDto,
   ): Promise<DashboardSummary> {
-    return this.accounts.getDashboard(user, query.range, query.refresh);
+    return this.accounts.getDashboard(user, query.range);
   }
 
   /** Track a new Reddit account by username for the current shiller. */
@@ -85,6 +85,22 @@ export class RedditController {
     @Query() query: GetCommentsQueryDto,
   ): Promise<AccountComments> {
     return this.accounts.getAccountComments(user, accountId, query);
+  }
+
+  /**
+   * Force-refresh a single account from Reddit and return its updated dashboard row.
+   * The client calls this once per account, sequentially, so a fleet refresh never
+   * becomes one timeout-prone request. Admins may refresh any account; a shiller
+   * only their own (else 404). POST because it mutates cached metrics/karma.
+   */
+  @Post('accounts/:accountId/refresh')
+  @Roles('admin', 'shiller')
+  async refreshAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('accountId') accountId: string,
+    @Query() query: DashboardQueryDto,
+  ): Promise<DashboardAccountRow> {
+    return this.accounts.refreshAccountRow(user, accountId, query.range);
   }
 
   /** Stop tracking one of the current shiller's Reddit accounts. */
