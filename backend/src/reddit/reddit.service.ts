@@ -14,6 +14,7 @@ import axios, {
   AxiosResponseHeaders,
 } from 'axios';
 import {
+  CommentsPage,
   RedditComment,
   RedditListing,
   toRedditComment,
@@ -375,21 +376,27 @@ export class RedditService {
    * {@link MAX_COMMENT_PAGES} is reached — whichever comes first. `to` filters out
    * anything newer than the upper bound without stopping the crawl.
    *
+   * Returns the cursor for the next page alongside the comments, so a caller can
+   * walk back through an account's history one page at a time.
+   *
    * @param username the Reddit account (canonical casing from `validateUsername`).
-   * @param range optional ISO-8601 `from`/`to` bounds (inclusive).
+   * @param range optional ISO-8601 `from`/`to` bounds (inclusive) and an `after`
+   *   cursor to resume from (a Reddit fullname from a previous call).
+   * @returns the page's comments plus the `after` cursor for the next page.
    * @throws NotFoundException if the account no longer exists (Reddit 404).
    * @throws BadRequestException on any other fetch failure.
    */
   async getComments(
     username: string,
-    range: { from?: string; to?: string } = {},
-  ): Promise<RedditComment[]> {
+    range: { from?: string; to?: string; after?: string } = {},
+  ): Promise<CommentsPage> {
     const accessToken = await this.getAccessToken();
     const fromMs = range.from ? new Date(range.from).getTime() : undefined;
     const toMs = range.to ? new Date(range.to).getTime() : undefined;
 
     const collected: RedditComment[] = [];
-    let after: string | null = null;
+    // Seed from the caller's cursor so paging resumes where the last call stopped.
+    let after: string | null = range.after ?? null;
     let page = 0;
     // Set once we page past the lower bound, to stop the descending crawl.
     let crossedFrom = false;
@@ -443,7 +450,12 @@ export class RedditService {
         page < MAX_COMMENT_PAGES
       );
 
-      return collected;
+      // Reason: the two stop conditions mean different things to a paging caller.
+      // Crossing `from` means every remaining comment is out of window, so there
+      // is nothing older worth fetching — report exhaustion. Any other stop (the
+      // single-page default, or the page cap) leaves real history behind, so hand
+      // back Reddit's cursor. It is already null when the listing itself ran out.
+      return { comments: collected, after: crossedFrom ? null : after };
     } catch (err) {
       const status = isAxiosError(err) ? err.response?.status : undefined;
       if (status === 404) {
