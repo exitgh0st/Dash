@@ -32,6 +32,30 @@ export interface RedditComment {
 export interface AccountComments {
   account: RedditAccount;
   comments: RedditComment[];
+  /** Cursor to pass back as `after` for the next (older) page; null when exhausted. */
+  after: string | null;
+}
+
+/**
+ * A comment tagged with the Reddit account it came from. Used by every merged
+ * multi-account feed (Activity History, the shiller's recent-comments card).
+ */
+export interface TaggedComment extends RedditComment {
+  account: string;
+}
+
+/**
+ * One emission of a sequential multi-account comment walk. The walk emits after
+ * every account it finishes, so consumers can render progressively instead of
+ * waiting for the whole fleet.
+ */
+export interface MergedCommentsProgress {
+  /** Merged newest-first feed so far, capped at the caller's limit. */
+  comments: TaggedComment[];
+  /** Accounts finished so far. */
+  done: number;
+  /** Accounts in the walk. */
+  total: number;
 }
 
 /** Which week the dashboard summarizes (mirrors the backend `DashboardRangeKey`). */

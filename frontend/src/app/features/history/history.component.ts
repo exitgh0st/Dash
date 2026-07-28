@@ -1,28 +1,22 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { catchError, forkJoin, map, of } from 'rxjs';
+import { map } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
+import { MergedCommentFeed } from '../../core/reddit/merged-comment-feed';
 import { RedditAccountsService } from '../../core/reddit/reddit-accounts.service';
+import { TaggedComment } from '../../core/reddit/reddit.models';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
-/** A comment tagged with the account it came from, for the merged history feed. */
-interface HistoryComment {
-  id: string;
-  body: string;
-  subreddit: string;
-  score: number;
-  createdUtc: string;
-  permalink: string;
-  account: string;
-}
-
-// Cap the merged feed so a wide admin scope doesn't render an unbounded list.
-const MAX_HISTORY_ITEMS = 40;
+// Comments shown per page of the merged feed.
+const PAGE_SIZE = 40;
 
 /**
- * Activity History: a merged, newest-first feed of recent comments across the
+ * Activity History: a merged, newest-first, **paged** feed of comments across the
  * caller's in-scope accounts (admin = all accounts, shiller = own). Post history
  * is a "coming soon" placeholder — Dash reads comments only for now. Account
  * discovery is role-scoped by the backend; one failing account is tolerated.
+ *
+ * The merge and cursor bookkeeping live in {@link MergedCommentFeed}; this
+ * component only wires account discovery to it and renders the pager.
  */
 @Component({
   selector: 'app-history',
@@ -37,21 +31,39 @@ export class HistoryComponent implements OnInit {
 
   private readonly isAdmin = computed(() => this.auth.role() === 'admin');
 
-  readonly loading = signal(true);
-  readonly error = signal(false);
-  readonly comments = signal<HistoryComment[]>([]);
+  /** Paged multi-account feed; view-scoped, so it's constructed here. */
+  readonly feed = new MergedCommentFeed(this.reddit, PAGE_SIZE);
+
+  // Account discovery runs before the feed opens, so its state is tracked apart
+  // from the feed's and folded into the two flags the template reads.
+  private readonly discovering = signal(true);
+  private readonly discoveryFailed = signal(false);
+
+  // True only until the first account's comments land — after that the feed is
+  // rendered and the remaining accounts fill in behind the progress line.
+  readonly loading = computed(() => this.discovering() || this.feed.loading());
+  readonly error = computed(
+    () => this.discoveryFailed() || this.feed.error(),
+  );
+  readonly comments = this.feed.page;
+
+  /** Progress of the sequential per-account fill, shown as "Loading X of N…". */
+  readonly walkProgress = this.feed.fillProgress;
+
+  /** Whether accounts are still being fetched (drives the progress line). */
+  readonly walking = this.feed.filling;
 
   /** Active sort mode for the feed: newest-first (default) or most-upvoted. */
   readonly sort = signal<'newest' | 'top'>('newest');
 
   /**
-   * The feed reordered for display per the active sort. Client-side only — never
-   * mutates the source `comments()` array and issues no network request.
-   * Reason: this sorts the already-loaded, recency-capped feed (the 40 most
-   * recent merged comments), so "Most upvoted" ranks that recent window, not an
-   * all-time top query — consistent with History being a recent-activity view.
+   * The current page reordered for display per the active sort. Client-side only —
+   * never mutates the feed's page and issues no network request.
+   * Reason: this sorts the *current page*, so "Most upvoted" ranks the 40 comments
+   * on screen, not an all-time top query — the live Reddit API has no such query,
+   * and ranking across pages would mean fetching an account's whole history.
    */
-  readonly sortedComments = computed<HistoryComment[]>(() => {
+  readonly sortedComments = computed<TaggedComment[]>(() => {
     const list = this.comments();
     if (this.sort() === 'newest') return list;
     return [...list].sort(
@@ -63,13 +75,13 @@ export class HistoryComponent implements OnInit {
     this.load();
   }
 
-  /** Discover in-scope account ids (role-scoped), then fetch + merge comments. */
+  /** Discover in-scope account ids (role-scoped), then open the paged feed. */
   private load(): void {
-    this.loading.set(true);
-    this.error.set(false);
+    this.discovering.set(true);
+    this.discoveryFailed.set(false);
 
     // Admin scope comes from the dashboard summary (all accounts); shillers use
-    // the cheap own-accounts list. Both yield the ids we then fetch comments for.
+    // the cheap own-accounts list. Both yield the ids the feed then pages over.
     const accountIds$ = this.isAdmin()
       ? this.reddit.dashboard('this-week').pipe(
           map((s) => s.accounts.map((a) => a.id)),
@@ -77,52 +89,35 @@ export class HistoryComponent implements OnInit {
       : this.reddit.list().pipe(map((accounts) => accounts.map((a) => a.id)));
 
     accountIds$.subscribe({
-      next: (ids) => this.fetchComments(ids),
-      error: () => this.failLoad(),
-    });
-  }
-
-  /** Fetch each account's latest comments and merge into one newest-first feed. */
-  private fetchComments(ids: string[]): void {
-    if (ids.length === 0) {
-      this.comments.set([]);
-      this.loading.set(false);
-      return;
-    }
-    forkJoin(
-      ids.map((id) =>
-        this.reddit.comments(id).pipe(
-          map((res) =>
-            res.comments.map((c) => ({
-              ...c,
-              account: res.account.redditUsername,
-            })),
-          ),
-          // One bad account shouldn't blank the whole feed.
-          catchError(() => of([] as HistoryComment[])),
-        ),
-      ),
-    ).subscribe({
-      next: (lists) => {
-        const merged = lists
-          .flat()
-          .sort((a, b) => b.createdUtc.localeCompare(a.createdUtc))
-          .slice(0, MAX_HISTORY_ITEMS);
-        this.comments.set(merged);
-        this.loading.set(false);
+      next: (ids) => {
+        this.discovering.set(false);
+        this.feed.open(ids);
       },
-      error: () => this.failLoad(),
+      error: () => {
+        this.discovering.set(false);
+        this.discoveryFailed.set(true);
+      },
     });
   }
 
-  /** Switch the display sort. Purely reorders the loaded feed — no re-fetch. */
+  /** Switch the display sort. Purely reorders the current page — no re-fetch. */
   setSort(mode: 'newest' | 'top'): void {
     this.sort.set(mode);
   }
 
-  private failLoad(): void {
-    this.loading.set(false);
-    this.error.set(true);
+  /**
+   * Advance a page. Guarded on the fill: until every account has a buffered
+   * comment the on-screen list is a preview, so paging from it could skip
+   * comments that a not-yet-fetched account still holds.
+   */
+  nextPage(): void {
+    if (!this.feed.hasNext() || this.walking()) return;
+    this.feed.next();
+  }
+
+  /** Step back to the previous page — served from memory, no requests. */
+  prevPage(): void {
+    this.feed.prev();
   }
 
   /** Relative-ish "time ago" label for a comment timestamp. */

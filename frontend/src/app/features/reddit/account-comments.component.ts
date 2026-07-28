@@ -119,7 +119,7 @@ export class AccountCommentsComponent implements OnInit {
     const from = start ? startOfDay(start).toISOString() : undefined;
     const to = end ? endOfDay(end).toISOString() : undefined;
 
-    this.reddit.comments(this.accountId, from, to).subscribe({
+    this.reddit.comments(this.accountId, { from, to }).subscribe({
       next: (res) => {
         this.username.set(res.account.redditUsername);
         this.comments.set(res.comments);

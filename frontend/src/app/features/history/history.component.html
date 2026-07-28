@@ -14,6 +14,14 @@
   </div>
 </div>
 
+<!-- Accounts are walked one at a time; show how far along the walk is while the
+     already-loaded comments stay on screen. -->
+@if (walking() && !loading()) {
+  <div class="walk-progress">
+    Loading {{ walkProgress().done }} of {{ walkProgress().total }} accounts…
+  </div>
+}
+
 @if (loading()) {
   <mat-progress-bar mode="indeterminate" />
 } @else if (error()) {
@@ -22,10 +30,14 @@
     <p>Couldn't load comment history. Please try again.</p>
   </div>
 } @else if (comments().length === 0) {
-  <div class="card empty">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg>
-    <p>No comments found for the tracked accounts.</p>
-  </div>
+  <!-- Only claim "no comments" once the walk is done — a later account may still
+       contribute, so while walking this renders nothing but the progress line. -->
+  @if (!walking()) {
+    <div class="card empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></svg>
+      <p>No comments found for the tracked accounts.</p>
+    </div>
+  }
 } @else {
   <div class="card fade" style="padding: 4px 0">
     @for (c of sortedComments(); track c.id) {
@@ -49,6 +61,14 @@
         </div>
       </a>
     }
+  </div>
+
+  <!-- Prev is served from retained pages (no request); Next stays disabled until
+       every account is buffered, since the list is only a preview until then. -->
+  <div class="pager">
+    <button type="button" [disabled]="!feed.hasPrev()" (click)="prevPage()">← Prev</button>
+    <span class="pager-label">Page {{ feed.pageNumber() }}</span>
+    <button type="button" [disabled]="!feed.hasNext() || walking()" (click)="nextPage()">Next →</button>
   </div>
 }
 

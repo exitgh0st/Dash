@@ -498,6 +498,40 @@ body {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
+// Prev / Page N / Next pager under a paged list. Not `mat-paginator`: the live
+// Reddit API gives no total, so there is no page count to render.
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.pager button {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.14s;
+}
+.pager button:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pager-label {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
 // Stack the two-column layout on narrow screens.
 @media (max-width: 1000px) {
   .kpi-grid {
