@@ -86,7 +86,8 @@
   margin-left: 8px;
 }
 
-// Karma Δ cell: green ▲ when this week meets/beats last week, orange ▼ when it trails.
+// Karma Δ cell, coloured by the sign of the gain itself: green ▲ for a gain,
+// neutral grey – for no movement, orange ▼ for a loss.
 .delta {
   font-weight: 600;
   white-space: nowrap;
@@ -94,8 +95,11 @@
 .delta.up {
   color: var(--green);
 }
+.delta.flat {
+  color: var(--ink-3);
+}
 .delta.down {
-  color: var(--orange, #ff9800);
+  color: var(--quota-short);
 }
 
 // Tighter variant of the shared `.note` for placing directly under a chart.

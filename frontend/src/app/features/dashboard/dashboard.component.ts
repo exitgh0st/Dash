@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { RouterLink } from '@angular/router';
-import { catchError, concatMap, forkJoin, from, map, of } from 'rxjs';
+import { catchError, concatMap, from, of } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { DashboardRangeService } from '../../core/dashboard/dashboard-range.service';
 import { RedditAccountsService } from '../../core/reddit/reddit-accounts.service';
@@ -9,6 +9,7 @@ import {
   DashboardAccountRow,
   DashboardSummary,
   RedditAccountStatus,
+  TaggedComment,
 } from '../../core/reddit/reddit.models';
 import {
   BarDatum,
@@ -18,17 +19,6 @@ import {
   KarmaTrendChartComponent,
   KarmaTrendDatum,
 } from './karma-trend-chart.component';
-
-/** A recent comment tagged with the account it came from (shiller overview). */
-interface RecentComment {
-  id: string;
-  body: string;
-  subreddit: string;
-  score: number;
-  createdUtc: string;
-  permalink: string;
-  account: string;
-}
 
 /**
  * A shiller's accounts rolled up into one summary (admin manager view). Bounded by
@@ -54,6 +44,9 @@ interface ShillerGroup {
   /** The shiller's individual accounts, kept for the drill-down. */
   accounts: DashboardAccountRow[];
 }
+
+// How many merged comments the shiller's "recent comments" card shows.
+const RECENT_COMMENTS_LIMIT = 6;
 
 // Avatar palette (prototype colors), assigned by row index.
 const AVATAR_COLORS = [
@@ -108,7 +101,7 @@ export class DashboardComponent {
 
   // Shiller "recent comments" list (fetched separately from the summary counts).
   readonly recentLoading = signal(false);
-  readonly recentComments = signal<RecentComment[]>([]);
+  readonly recentComments = signal<TaggedComment[]>([]);
 
   readonly kpis = computed(() => this.summary()?.kpis ?? null);
   readonly accounts = computed(() => this.summary()?.accounts ?? []);
@@ -223,7 +216,10 @@ export class DashboardComponent {
   private static readonly REFRESH_REFETCH_MS = 4000;
   // Cap on chained silent re-fetches per user load, so a server that stays
   // `refreshing` (e.g. a slow crawl) can't make us poll unbounded.
-  private static readonly MAX_SILENT_REFETCHES = 4;
+  // Reason: 8 × 4 s ≈ 32 s of coverage. The server now defers most cold accounts
+  // to a *sequential* background drain, which outlasts the previous ~16 s window
+  // and would otherwise leave those rows showing 0 until a manual reload.
+  private static readonly MAX_SILENT_REFETCHES = 8;
   // Pending silent re-fetch timer, cleared on every new load so a range switch
   // can't leave a stale-week refetch queued.
   private refetchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -357,8 +353,13 @@ export class DashboardComponent {
 
   /**
    * Fetch the newest comments across the shiller's accounts and merge them into
-   * a single newest-first feed. One account failing is tolerated (its slice is
-   * dropped) so the feed still renders.
+   * a single newest-first feed.
+   *
+   * Walks the accounts one at a time and fills the card in as each lands, so the
+   * list appears after the first account instead of after the slowest one. One
+   * account failing is tolerated (its slice is dropped) so the feed still renders.
+   * No early stop here — a shiller owns few accounts and the list is only 6 items,
+   * so completeness is worth the full walk.
    */
   private loadRecentComments(accounts: DashboardAccountRow[]): void {
     const ids = accounts.map((a) => a.id);
@@ -367,26 +368,19 @@ export class DashboardComponent {
       return;
     }
     this.recentLoading.set(true);
-    forkJoin(
-      ids.map((id) =>
-        this.reddit.comments(id).pipe(
-          map((res) =>
-            res.comments.map((c) => ({
-              ...c,
-              account: res.account.redditUsername,
-            })),
-          ),
-          catchError(() => of([] as RecentComment[])),
-        ),
-      ),
-    ).subscribe((lists) => {
-      const merged = lists
-        .flat()
-        .sort((a, b) => b.createdUtc.localeCompare(a.createdUtc))
-        .slice(0, 6);
-      this.recentComments.set(merged);
-      this.recentLoading.set(false);
-    });
+    this.reddit
+      .mergedComments(ids, { limit: RECENT_COMMENTS_LIMIT })
+      .subscribe({
+        next: (progress) => {
+          this.recentComments.set(progress.comments);
+          // Clear the placeholder once any account has reported; the rest of the
+          // walk keeps topping the list up underneath.
+          if (progress.done > 0) {
+            this.recentLoading.set(false);
+          }
+        },
+        complete: () => this.recentLoading.set(false),
+      });
   }
 
   // ---- Presentation helpers ----
@@ -457,20 +451,28 @@ export class DashboardComponent {
     return g.accounts.some((a) => a.karmaThisWeek !== null);
   }
 
-  /** Group-level trend direction: this-week gain meets/beats last week (or no last week). */
-  groupTrendUp(g: ShillerGroup): boolean {
-    if (g.karmaLastWeek === null) return true;
-    return g.karmaThisWeek >= g.karmaLastWeek;
+  /**
+   * Direction of a karma gain, from the sign of the number itself — drives the
+   * green/grey/orange colouring of every Δ cell.
+   *
+   * Reason: this deliberately ignores last week. The previous rule compared the
+   * gain against `karmaLastWeek`, so a genuine `+1` against last week's `+4`
+   * rendered as an orange ▼ "loss" — and, inversely, a `-30` with no last-week
+   * baseline rendered green. Since `karmaThisWeek` is `live − Monday baseline`,
+   * it is legitimately near zero early in the week, which made almost every row
+   * read as a decline on a Monday. The week-over-week comparison still exists
+   * where it belongs: the karma trend chart, which plots both weeks side by side.
+   */
+  deltaDir(value: number | null): 'up' | 'flat' | 'down' {
+    if (value === null || value === 0) return 'flat';
+    return value > 0 ? 'up' : 'down';
   }
 
-  /**
-   * True when this week's karma gain meets or beats last week's (drives green/orange).
-   * With no last-week figure yet, reads as up (neutral/green) — we don't imply a
-   * down-trend against data we don't have.
-   */
-  trendUp(row: DashboardAccountRow): boolean {
-    if (row.karmaLastWeek === null) return true;
-    return (row.karmaThisWeek ?? 0) >= row.karmaLastWeek;
+  /** Arrow (or dash) matching {@link deltaDir} for a karma gain. */
+  deltaGlyph(value: number | null): string {
+    const dir = this.deltaDir(value);
+    if (dir === 'up') return '▲';
+    return dir === 'down' ? '▼' : '–';
   }
 
   /** Signed karma-gain label for the Δ column, e.g. "+142" / "-30" / "0". */
