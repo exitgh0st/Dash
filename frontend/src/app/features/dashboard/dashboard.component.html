@@ -162,8 +162,11 @@
                 <td class="num">{{ fmt(g.karma) }}</td>
                 <td class="num">
                   @if (groupHasTrend(g)) {
-                    <span class="delta" [class.up]="groupTrendUp(g)" [class.down]="!groupTrendUp(g)">
-                      {{ groupTrendUp(g) ? '▲' : '▼' }} {{ fmtSigned(g.karmaThisWeek) }}
+                    <span class="delta"
+                          [class.up]="deltaDir(g.karmaThisWeek) === 'up'"
+                          [class.flat]="deltaDir(g.karmaThisWeek) === 'flat'"
+                          [class.down]="deltaDir(g.karmaThisWeek) === 'down'">
+                      {{ deltaGlyph(g.karmaThisWeek) }} {{ fmtSigned(g.karmaThisWeek) }}
                     </span>
                   } @else {
                     <span class="sub">—</span>
@@ -194,8 +197,11 @@
                     <td class="num">{{ fmt(a.karma) }}</td>
                     <td class="num">
                       @if (hasTrend(a)) {
-                        <span class="delta" [class.up]="trendUp(a)" [class.down]="!trendUp(a)">
-                          {{ trendUp(a) ? '▲' : '▼' }} {{ fmtSigned(a.karmaThisWeek) }}
+                        <span class="delta"
+                              [class.up]="deltaDir(a.karmaThisWeek) === 'up'"
+                              [class.flat]="deltaDir(a.karmaThisWeek) === 'flat'"
+                              [class.down]="deltaDir(a.karmaThisWeek) === 'down'">
+                          {{ deltaGlyph(a.karmaThisWeek) }} {{ fmtSigned(a.karmaThisWeek) }}
                         </span>
                       } @else {
                         <span class="sub">—</span>
@@ -307,11 +313,14 @@
                 </td>
                 <td class="num">{{ a.weeklyComments }}</td>
                 <td class="num">{{ fmt(a.karma) }}</td>
-                <!-- Δ karma: this week's gain, arrow vs last week; "—" until a baseline exists. -->
+                <!-- Δ karma: this week's gain, coloured by its own sign; "—" until a baseline exists. -->
                 <td class="num">
                   @if (hasTrend(a)) {
-                    <span class="delta" [class.up]="trendUp(a)" [class.down]="!trendUp(a)">
-                      {{ trendUp(a) ? '▲' : '▼' }} {{ fmtSigned(a.karmaThisWeek) }}
+                    <span class="delta"
+                          [class.up]="deltaDir(a.karmaThisWeek) === 'up'"
+                          [class.flat]="deltaDir(a.karmaThisWeek) === 'flat'"
+                          [class.down]="deltaDir(a.karmaThisWeek) === 'down'">
+                      {{ deltaGlyph(a.karmaThisWeek) }} {{ fmtSigned(a.karmaThisWeek) }}
                     </span>
                   } @else {
                     <span class="sub">—</span>

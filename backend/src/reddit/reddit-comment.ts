@@ -43,6 +43,16 @@ export interface RedditComment {
 }
 
 /**
+ * One page of comments plus the cursor for the next one. `after` is a Reddit
+ * fullname (`t1_…`) to hand back on the following request, or null when there is
+ * nothing older to fetch.
+ */
+export interface CommentsPage {
+  comments: RedditComment[];
+  after: string | null;
+}
+
+/**
  * Map a raw Reddit comment child to the public {@link RedditComment} projection.
  * Converts epoch-seconds → ISO and the site-relative permalink → an absolute URL.
  */

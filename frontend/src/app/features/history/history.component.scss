@@ -1,3 +1,11 @@
 :host {
   display: block;
 }
+
+// Sits between the section header and the feed while accounts are still being
+// walked. Deliberately quiet — the feed below is already usable.
+.walk-progress {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--ink-3);
+}

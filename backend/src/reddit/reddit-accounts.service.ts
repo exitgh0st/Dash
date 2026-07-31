@@ -25,6 +25,8 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 export interface AccountComments {
   account: PublicRedditAccount;
   comments: RedditComment[];
+  /** Cursor for the next (older) page, or null when nothing older is reachable. */
+  after: string | null;
 }
 
 /**
@@ -50,12 +52,30 @@ const METRICS_STALE_MS = 5 * 60 * 1000;
 // reads themselves stay fully parallel (bounded only by RedditService's throttle).
 const MAX_CONCURRENT_REFRESH_WRITES = 5;
 
+// Cap on cold (never-cached) accounts refreshed inline in a dashboard request.
+// Each refresh is up to ~21 Reddit calls queued behind the global 60/min throttle,
+// so a cold fleet used to push the request past the platform timeout. Everything
+// past this cap is queued to the background drain and picked up by the client's
+// silent re-fetch — those rows render as 0 for a few seconds instead of hanging
+// the whole page.
+const MAX_SYNC_COLD_REFRESH = 3;
+
 /** The freshly-polled figures a refresh produces (or null when Reddit failed). */
 interface RefreshedFigures {
   weeklyComments: number;
   weeklyPosts: number;
   karma: number;
   status: RedditAccountStatus;
+}
+
+/** One account queued for a background metric refresh, with its week context. */
+interface QueuedRefresh {
+  account: AccountWithOwner;
+  range: DashboardRange;
+  thisWeekStart: Date;
+  viewedWeekStart: Date;
+  /** Dedup key, reserved in `refreshingKeys` at enqueue time and freed after the run. */
+  key: string;
 }
 
 /** A cached week metric row as loaded for the dashboard read. */
@@ -132,6 +152,13 @@ export class RedditAccountsService {
   private dbWriteActive = 0;
   private readonly dbWriteQueue: Array<() => void> = [];
 
+  // Accounts awaiting a background metric refresh, drained strictly one at a time.
+  // Reason: every Reddit call already serializes behind the service's 60/min token
+  // bucket, so firing N refreshes at once buys nothing and just holds N crawls open
+  // — a sequential drain finishes each account cleanly before starting the next.
+  private readonly backgroundQueue: QueuedRefresh[] = [];
+  private backgroundDraining = false;
+
   constructor(
     private readonly reddit: RedditService,
     private readonly prisma: PrismaService,
@@ -191,10 +218,8 @@ export class RedditAccountsService {
     ]);
 
     const now = Date.now();
-    // Cold = no cached row yet → must refresh synchronously so the row isn't empty.
-    // Reason: this is the only Reddit work allowed in the request path — crawling
-    // the whole fleet inline (the old force-refresh) blew past the request timeout.
-    const syncAccounts = accounts.filter((a) => !metrics.get(a.id));
+    // Cold = no cached row yet, so there is nothing to serve but zeros.
+    const coldAccounts = accounts.filter((a) => !metrics.get(a.id));
     // Stale = cached but older than the window → serve stale, refresh in background.
     const staleAccounts = accounts.filter((a) => {
       const m = metrics.get(a.id);
@@ -203,27 +228,36 @@ export class RedditAccountsService {
       );
     });
 
-    // Populate the synchronous set up front (parallelized). Their fresh figures are
+    // Only a bounded slice of the cold set is refreshed inside the request; the
+    // rest is deferred so a cold fleet can't stretch the response past the timeout.
+    const inlineCold = coldAccounts.slice(0, MAX_SYNC_COLD_REFRESH);
+    const deferredCold = coldAccounts.slice(MAX_SYNC_COLD_REFRESH);
+
+    // Refresh the inline set one account at a time. Sequential, not parallel:
+    // Reddit calls serialize on the shared throttle regardless, and doing them in
+    // order keeps this request's Reddit budget predictable. Their fresh figures are
     // used directly for this response; the cache is now warm for subsequent loads.
     const freshByAccount = new Map<string, RefreshedFigures | null>();
-    await Promise.all(
-      syncAccounts.map(async (account) => {
-        freshByAccount.set(
-          account.id,
-          await this.refreshAccountMetrics(
-            account,
-            range,
-            thisWeekStart,
-            viewedWeekStart,
-          ),
-        );
-      }),
-    );
-
-    // Kick stale accounts' refreshes off without waiting (deduped).
-    for (const account of staleAccounts) {
-      this.refreshInBackground(account, range, thisWeekStart, viewedWeekStart);
+    for (const account of inlineCold) {
+      freshByAccount.set(
+        account.id,
+        await this.refreshAccountMetrics(
+          account,
+          range,
+          thisWeekStart,
+          viewedWeekStart,
+        ),
+      );
     }
+
+    // Everything else refreshes behind the response, one account at a time (deduped).
+    // Deferred-cold accounts go first — they're the ones currently showing zeros.
+    this.queueRefresh(
+      [...deferredCold, ...staleAccounts],
+      range,
+      thisWeekStart,
+      viewedWeekStart,
+    );
 
     // Assemble rows from cache + any just-fetched cold figures. Order follows
     // `accounts` (createdAt asc).
@@ -262,9 +296,11 @@ export class RedditAccountsService {
         ),
       },
       accounts: rows,
-      // Signal the UI to silently re-fetch once: only stale (background-refreshing)
-      // accounts leave fresher numbers pending — cold ones were refreshed inline.
-      refreshing: staleAccounts.length > 0 ? true : undefined,
+      // Signal the UI to silently re-fetch: both stale accounts and cold accounts
+      // deferred past MAX_SYNC_COLD_REFRESH leave fresher numbers pending. Deferred
+      // cold rows currently read 0, so missing this flag would strand them at zero.
+      refreshing:
+        staleAccounts.length > 0 || deferredCold.length > 0 ? true : undefined,
     };
   }
 
@@ -580,7 +616,7 @@ export class RedditAccountsService {
       // still pass through the shared 60/min gate in RedditService, so this is
       // safe on rate limits — it just collapses per-account latency from the sum
       // of the reads to the slowest one (comments/posts crawls + the /about read).
-      const [comments, weeklyPosts, stats] = await Promise.all([
+      const [commentsPage, weeklyPosts, stats] = await Promise.all([
         this.reddit.getComments(account.redditUsername, {
           from: range.from,
           to: range.to,
@@ -616,14 +652,14 @@ export class RedditAccountsService {
             create: {
               accountId: account.id,
               weekStart: viewedWeekStart,
-              weeklyComments: comments.length,
+              weeklyComments: commentsPage.comments.length,
               weeklyPosts,
               // Explicit now that `refreshedAt` isn't @updatedAt — this is a
               // genuine successful re-poll, so mark the row fresh.
               refreshedAt: new Date(),
             },
             update: {
-              weeklyComments: comments.length,
+              weeklyComments: commentsPage.comments.length,
               weeklyPosts,
               refreshedAt: new Date(),
             },
@@ -649,7 +685,7 @@ export class RedditAccountsService {
       );
 
       return {
-        weeklyComments: comments.length,
+        weeklyComments: commentsPage.comments.length,
         weeklyPosts,
         karma: stats.totalKarma,
         status: stats.status,
@@ -709,27 +745,82 @@ export class RedditAccountsService {
   }
 
   /**
-   * Fire-and-forget a metric refresh for a stale account, deduped so overlapping
-   * dashboard requests don't spawn duplicate Reddit crawls for the same account
-   * and week. Errors are swallowed (already logged in `refreshAccountMetrics`).
+   * Queue accounts for a background metric refresh and make sure the drain is
+   * running. Returns immediately — the caller's response is never delayed.
+   *
+   * Dedup keys are reserved in `refreshingKeys` at *enqueue* time (not when the
+   * account's turn comes), so an overlapping dashboard request can't queue the same
+   * account/week twice while it's still waiting in line.
+   *
+   * @param accounts accounts to refresh, in the order they should be processed.
+   * @param range the resolved week window to re-poll.
+   * @param thisWeekStart current week's Monday (karma baseline anchor).
+   * @param viewedWeekStart the week whose counts are being cached.
    */
-  private refreshInBackground(
-    account: AccountWithOwner,
+  private queueRefresh(
+    accounts: AccountWithOwner[],
     range: DashboardRange,
     thisWeekStart: Date,
     viewedWeekStart: Date,
   ): void {
-    const key = this.baselineKey(account.id, viewedWeekStart);
-    if (this.refreshingKeys.has(key)) {
+    for (const account of accounts) {
+      const key = this.baselineKey(account.id, viewedWeekStart);
+      if (this.refreshingKeys.has(key)) {
+        continue;
+      }
+      this.refreshingKeys.add(key);
+      this.backgroundQueue.push({
+        account,
+        range,
+        thisWeekStart,
+        viewedWeekStart,
+        key,
+      });
+    }
+    void this.drainRefreshQueue();
+  }
+
+  /**
+   * Drain the background refresh queue **one account at a time**, then stop.
+   *
+   * Only ever one drain loop runs (`backgroundDraining`); anything enqueued while
+   * it's active is picked up by the loop still in flight.
+   *
+   * Reason: the per-account `catch` is deliberate belt-and-braces. `refreshAccountMetrics`
+   * already handles its own failures and returns null, but nothing enforces that — and
+   * because the drain is started with `void`, an escaping rejection would both abandon
+   * every account still queued behind it and surface as an unhandled rejection.
+   */
+  private async drainRefreshQueue(): Promise<void> {
+    if (this.backgroundDraining) {
       return;
     }
-    this.refreshingKeys.add(key);
-    void this.refreshAccountMetrics(
-      account,
-      range,
-      thisWeekStart,
-      viewedWeekStart,
-    ).finally(() => this.refreshingKeys.delete(key));
+    this.backgroundDraining = true;
+    try {
+      let job = this.backgroundQueue.shift();
+      while (job !== undefined) {
+        try {
+          await this.refreshAccountMetrics(
+            job.account,
+            job.range,
+            job.thisWeekStart,
+            job.viewedWeekStart,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Background refresh failed for u/${job.account.redditUsername}: ${
+              err instanceof Error ? err.message : 'unknown error'
+            }`,
+          );
+        } finally {
+          // Free the dedup key so a later request can re-queue this account.
+          this.refreshingKeys.delete(job.key);
+        }
+        job = this.backgroundQueue.shift();
+      }
+    } finally {
+      this.backgroundDraining = false;
+    }
   }
 
   /**
@@ -870,13 +961,14 @@ export class RedditAccountsService {
    *
    * @param requester the authenticated principal (role decides scope).
    * @param accountId the RedditAccount to read.
-   * @param range optional ISO-8601 `from`/`to` bounds passed through to Reddit.
+   * @param range optional ISO-8601 `from`/`to` bounds and an `after` paging
+   *   cursor, all passed through to Reddit.
    * @throws NotFoundException if the account doesn't exist or isn't the caller's.
    */
   async getAccountComments(
     requester: AuthenticatedUser,
     accountId: string,
-    range: { from?: string; to?: string },
+    range: { from?: string; to?: string; after?: string },
   ): Promise<AccountComments> {
     const account = await this.prisma.redditAccount.findUnique({
       where: { id: accountId },
@@ -889,10 +981,7 @@ export class RedditAccountsService {
       throw new NotFoundException('Reddit account not found.');
     }
 
-    const comments = await this.reddit.getComments(
-      account.redditUsername,
-      range,
-    );
+    const page = await this.reddit.getComments(account.redditUsername, range);
 
     // Record the poll time so the UI can show freshness later.
     const updated = await this.prisma.redditAccount.update({
@@ -900,7 +989,11 @@ export class RedditAccountsService {
       data: { lastCheckedAt: new Date() },
     });
 
-    return { account: toPublicRedditAccount(updated), comments };
+    return {
+      account: toPublicRedditAccount(updated),
+      comments: page.comments,
+      after: page.after,
+    };
   }
 
   /** List a shiller's tracked accounts (safe projection), oldest first. */
