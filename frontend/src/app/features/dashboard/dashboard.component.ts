@@ -33,10 +33,10 @@ interface ShillerGroup {
   weeklyComments: number;
   weeklyPosts: number;
   karma: number;
-  /** Summed karma gained this week (null-safe sum; null contributions count as 0). */
-  karmaThisWeek: number;
-  /** Summed last-week karma gain, or null until any account has a last-week figure. */
-  karmaLastWeek: number | null;
+  /** Summed karma gained in the viewed week (null-safe sum; null contributions count as 0). */
+  karmaGained: number;
+  /** Summed week-before karma gain, or null until any account has that figure. */
+  karmaGainedPrevious: number | null;
   /** Σ owner comment quota over this shiller's in-scope accounts. */
   commentQuotaTarget: number;
   /** Σ owner post quota over this shiller's in-scope accounts. */
@@ -146,8 +146,8 @@ export class DashboardComponent {
           weeklyComments: 0,
           weeklyPosts: 0,
           karma: 0,
-          karmaThisWeek: 0,
-          karmaLastWeek: null,
+          karmaGained: 0,
+          karmaGainedPrevious: null,
           commentQuotaTarget: 0,
           postQuotaTarget: 0,
           accounts: [],
@@ -159,10 +159,10 @@ export class DashboardComponent {
       g.weeklyComments += a.weeklyComments;
       g.weeklyPosts += a.weeklyPosts;
       g.karma += a.karma ?? 0;
-      g.karmaThisWeek += a.karmaThisWeek ?? 0;
+      g.karmaGained += a.karmaGained ?? 0;
       // Sum last-week only over accounts that have it; stays null if none do.
-      if (a.karmaLastWeek !== null) {
-        g.karmaLastWeek = (g.karmaLastWeek ?? 0) + a.karmaLastWeek;
+      if (a.karmaGainedPrevious !== null) {
+        g.karmaGainedPrevious = (g.karmaGainedPrevious ?? 0) + a.karmaGainedPrevious;
       }
       g.commentQuotaTarget += a.weeklyCommentQuota ?? 0;
       g.postQuotaTarget += a.weeklyPostQuota ?? 0;
@@ -189,8 +189,8 @@ export class DashboardComponent {
   readonly karmaTrendData = computed<KarmaTrendDatum[]>(() =>
     this.shillerGroups().map((g) => ({
       label: this.localPart(g.ownerEmail),
-      thisWeek: g.karmaThisWeek,
-      lastWeek: g.karmaLastWeek,
+      thisWeek: g.karmaGained,
+      lastWeek: g.karmaGainedPrevious,
     })),
   );
 
@@ -201,7 +201,22 @@ export class DashboardComponent {
    * after a full week. The empty state only shows when nothing has a baseline yet.
    */
   readonly hasKarmaTrend = computed(() =>
-    this.accounts().some((a) => a.karmaThisWeek !== null),
+    this.accounts().some((a) => a.karmaGained !== null),
+  );
+
+  /** "this week" / "last week" — the viewed period, for karma labels and the chart legend. */
+  readonly periodLabel = computed(() =>
+    this.rangeSvc.range() === 'last-week' ? 'last week' : 'this week',
+  );
+
+  /** "This week" / "Last week" — capitalised viewed period for the chart legend. */
+  readonly periodTitle = computed(() =>
+    this.rangeSvc.range() === 'last-week' ? 'Last week' : 'This week',
+  );
+
+  /** "Last week" / "Week before" — the comparison bar's legend in the karma trend chart. */
+  readonly previousPeriodLabel = computed(() =>
+    this.rangeSvc.range() === 'last-week' ? 'Week before' : 'Last week',
   );
 
   // Which shiller groups are expanded (by owner key) in the drill-down table.
@@ -443,12 +458,12 @@ export class DashboardComponent {
 
   /** Whether an account has a karma Δ to show — true once a this-week baseline exists. */
   hasTrend(row: DashboardAccountRow): boolean {
-    return row.karmaThisWeek !== null;
+    return row.karmaGained !== null;
   }
 
   /** Whether a shiller group has any karma Δ to show (any account with a baseline). */
   groupHasTrend(g: ShillerGroup): boolean {
-    return g.accounts.some((a) => a.karmaThisWeek !== null);
+    return g.accounts.some((a) => a.karmaGained !== null);
   }
 
   /**
@@ -456,9 +471,9 @@ export class DashboardComponent {
    * green/grey/orange colouring of every Δ cell.
    *
    * Reason: this deliberately ignores last week. The previous rule compared the
-   * gain against `karmaLastWeek`, so a genuine `+1` against last week's `+4`
+   * gain against `karmaGainedPrevious`, so a genuine `+1` against last week's `+4`
    * rendered as an orange ▼ "loss" — and, inversely, a `-30` with no last-week
-   * baseline rendered green. Since `karmaThisWeek` is `live − Monday baseline`,
+   * baseline rendered green. Since `karmaGained` is `live − Monday baseline`,
    * it is legitimately near zero early in the week, which made almost every row
    * read as a decline on a Monday. The week-over-week comparison still exists
    * where it belongs: the karma trend chart, which plots both weeks side by side.

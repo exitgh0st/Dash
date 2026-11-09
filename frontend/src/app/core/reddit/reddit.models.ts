@@ -79,10 +79,10 @@ export interface DashboardAccountRow {
   weeklyPosts: number;
   /** Current total karma, or null when the account errored. */
   karma: number | null;
-  /** Karma gained so far this week (live − this-week baseline); null if errored. */
-  karmaThisWeek: number | null;
-  /** Karma gained last week; null until two consecutive weekly baselines exist. */
-  karmaLastWeek: number | null;
+  /** Karma gained during the viewed week; null if errored or a needed baseline is missing. */
+  karmaGained: number | null;
+  /** Karma gained the week before the viewed one; null until both baselines exist. */
+  karmaGainedPrevious: number | null;
   /** Owning shiller's email — present for admins only. */
   ownerEmail?: string;
   /** Owning shiller's user id — admins only; groups rows and links to `/shillers/:id`. */
@@ -101,8 +101,10 @@ export interface DashboardKpis {
   totalAccounts: number;
   activeAccounts: number;
   totalKarma: number;
-  /** Sum of per-account karma gained so far this week. */
-  karmaGainedThisWeek: number;
+  /** Sum of per-account karma gained during the viewed week. */
+  karmaGained: number;
+  /** Sum of the week-before gain; null until any account has that figure. */
+  karmaGainedPrevious: number | null;
   /** Weekly comment-quota target, summed from each account's owner's quota. */
   commentQuotaTarget: number;
   /** Weekly post-quota target, summed from each account's owner's quota. */

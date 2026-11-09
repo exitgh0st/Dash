@@ -145,6 +145,31 @@ function resolveRange(key: DashboardRangeKey): DashboardRange {
   };
 }
 
+/** The Monday anchors a dashboard read needs for the viewed week. */
+interface WeekAnchors {
+  /** Current week's Monday — new karma baselines are only ever written here. */
+  thisWeekStart: Date;
+  /** Monday of the week being viewed (this week or last week). */
+  viewedWeekStart: Date;
+  /** Monday of the week before the viewed one (week-over-week comparison). */
+  priorWeekStart: Date;
+  /** True when the viewed week is already over (it ends at `thisWeekStart`). */
+  isCompletedWeek: boolean;
+}
+
+/** Resolve a range key to the Monday anchors used for counts and karma baselines. */
+function resolveWeekAnchors(key: DashboardRangeKey): WeekAnchors {
+  const thisWeekStart = startOfWeek(new Date());
+  const isCompletedWeek = key === 'last-week';
+  const viewedWeekStart = new Date(thisWeekStart);
+  if (isCompletedWeek) {
+    viewedWeekStart.setDate(viewedWeekStart.getDate() - 7);
+  }
+  const priorWeekStart = new Date(viewedWeekStart);
+  priorWeekStart.setDate(priorWeekStart.getDate() - 7);
+  return { thisWeekStart, viewedWeekStart, priorWeekStart, isCompletedWeek };
+}
+
 /**
  * Orchestrates a shiller's tracked Reddit accounts: validates a username against
  * Reddit and persists/lists/removes RedditAccounts. It sits between the controller
@@ -216,19 +241,15 @@ export class RedditAccountsService {
       },
     });
 
-    // Karma-trend baselines are anchored to the *current* week regardless of the
-    // viewed range, so viewing "last week" still records this week's baseline.
-    const thisWeekStart = startOfWeek(new Date());
-    const lastWeekStart = new Date(thisWeekStart);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    // The viewed week decides which cached counts to read.
-    const viewedWeekStart =
-      rangeKey === 'last-week' ? lastWeekStart : thisWeekStart;
+    // The viewed week decides which cached counts and karma baselines to read;
+    // new baselines are still only ever written at the current week's Monday.
+    const weeks = resolveWeekAnchors(rangeKey);
+    const { thisWeekStart, viewedWeekStart } = weeks;
 
     const accountIds = accounts.map((a) => a.id);
     // Two cheap DB reads, no Reddit: karma baselines + the viewed week's cached counts.
     const [baselines, metrics] = await Promise.all([
-      this.loadKarmaBaselines(accountIds, thisWeekStart, lastWeekStart),
+      this.loadKarmaBaselines(accountIds, weeks),
       this.loadWeekMetrics(accountIds, viewedWeekStart),
     ]);
 
@@ -280,10 +301,8 @@ export class RedditAccountsService {
       this.assembleRow(account, isAdmin, {
         metric: metrics.get(account.id) ?? null,
         fresh: freshByAccount.get(account.id),
-        baselineThisWeek:
-          baselines.get(this.baselineKey(account.id, thisWeekStart)) ?? null,
-        baselineLastWeek:
-          baselines.get(this.baselineKey(account.id, lastWeekStart)) ?? null,
+        baselines,
+        weeks,
       }),
     );
 
@@ -295,9 +314,15 @@ export class RedditAccountsService {
         totalAccounts: rows.length,
         activeAccounts: rows.filter((r) => r.status === 'active').length,
         totalKarma: rows.reduce((sum, r) => sum + (r.karma ?? 0), 0),
-        karmaGainedThisWeek: rows.reduce(
-          (sum, r) => sum + (r.karmaThisWeek ?? 0),
-          0,
+        karmaGained: rows.reduce((sum, r) => sum + (r.karmaGained ?? 0), 0),
+        // Null-tolerant: stays null until at least one account has the figure, so
+        // the UI can tell "no data yet" apart from a genuine 0.
+        karmaGainedPrevious: rows.reduce<number | null>(
+          (sum, r) =>
+            r.karmaGainedPrevious === null
+              ? sum
+              : (sum ?? 0) + r.karmaGainedPrevious,
+          null,
         ),
         // Quota targets are per-account: each account contributes its owner's
         // weekly quota, so the target scales with how many accounts are in scope.
@@ -360,14 +385,10 @@ export class RedditAccountsService {
       throw new NotFoundException('Reddit account not found.');
     }
 
-    // Same week derivation as getDashboard: the karma baseline is always anchored
-    // to the current week, while the viewed week decides which cached counts to read.
+    // Same week derivation as getDashboard.
     const range = resolveRange(rangeKey);
-    const thisWeekStart = startOfWeek(new Date());
-    const lastWeekStart = new Date(thisWeekStart);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    const viewedWeekStart =
-      rangeKey === 'last-week' ? lastWeekStart : thisWeekStart;
+    const weeks = resolveWeekAnchors(rangeKey);
+    const { thisWeekStart, viewedWeekStart } = weeks;
 
     // One account's worth of Reddit work (comments + posts + /about), safely inside
     // the request timeout. Isolated: returns null (marks the account error) instead
@@ -382,17 +403,15 @@ export class RedditAccountsService {
     // Two cheap DB reads for this one account: karma baselines + the cached metric
     // (the refresh above just wrote both, so these reflect the fresh values).
     const [baselines, metrics] = await Promise.all([
-      this.loadKarmaBaselines([accountId], thisWeekStart, lastWeekStart),
+      this.loadKarmaBaselines([accountId], weeks),
       this.loadWeekMetrics([accountId], viewedWeekStart),
     ]);
 
     return this.assembleRow(account, isAdmin, {
       metric: metrics.get(accountId) ?? null,
       fresh,
-      baselineThisWeek:
-        baselines.get(this.baselineKey(accountId, thisWeekStart)) ?? null,
-      baselineLastWeek:
-        baselines.get(this.baselineKey(accountId, lastWeekStart)) ?? null,
+      baselines,
+      weeks,
     });
   }
 
@@ -511,8 +530,9 @@ export class RedditAccountsService {
     data: {
       metric: CachedWeekMetric | null;
       fresh: RefreshedFigures | null | undefined;
-      baselineThisWeek: number | null;
-      baselineLastWeek: number | null;
+      /** Karma baselines keyed by {@link baselineKey}. */
+      baselines: Map<string, number>;
+      weeks: WeekAnchors;
     },
   ): DashboardAccountRow {
     const base = {
@@ -535,8 +555,8 @@ export class RedditAccountsService {
         weeklyComments: 0,
         weeklyPosts: 0,
         karma: account.karma,
-        karmaThisWeek: null,
-        karmaLastWeek: null,
+        karmaGained: null,
+        karmaGainedPrevious: null,
       };
     }
 
@@ -553,13 +573,15 @@ export class RedditAccountsService {
       : (account.lastCheckedAt?.toISOString() ?? null);
 
     // Karma trend needs a numeric current karma; skip it when we've never captured one.
-    let karmaThisWeek: number | null = null;
-    let karmaLastWeek: number | null = null;
+    let karmaGained: number | null = null;
+    let karmaGainedPrevious: number | null = null;
     if (karma !== null) {
-      ({ karmaThisWeek, karmaLastWeek } = this.computeKarmaTrend(
+      const baselineAt = (weekStart: Date): number | null =>
+        data.baselines.get(this.baselineKey(account.id, weekStart)) ?? null;
+      ({ karmaGained, karmaGainedPrevious } = this.computeKarmaTrend(
         karma,
-        data.baselineThisWeek,
-        data.baselineLastWeek,
+        data.weeks,
+        baselineAt,
       ));
     }
 
@@ -570,24 +592,30 @@ export class RedditAccountsService {
       weeklyComments,
       weeklyPosts,
       karma,
-      karmaThisWeek,
-      karmaLastWeek,
+      karmaGained,
+      karmaGainedPrevious,
     };
   }
 
   /**
-   * Batch-load the karma baselines for this week and last week across the given
-   * accounts in one query, keyed by `accountId:weekStartMs` for O(1) lookup.
+   * Batch-load every karma baseline the viewed week's trend needs (its start, its
+   * end cap = this Monday, and the week before) across the given accounts in one
+   * query, keyed by `accountId:weekStartMs` for O(1) lookup.
    */
   private async loadKarmaBaselines(
     accountIds: string[],
-    thisWeekStart: Date,
-    lastWeekStart: Date,
+    weeks: WeekAnchors,
   ): Promise<Map<string, number>> {
     const snapshots = await this.prisma.karmaSnapshot.findMany({
       where: {
         accountId: { in: accountIds },
-        weekStart: { in: [thisWeekStart, lastWeekStart] },
+        weekStart: {
+          in: [
+            weeks.thisWeekStart,
+            weeks.viewedWeekStart,
+            weeks.priorWeekStart,
+          ],
+        },
       },
       select: { accountId: true, weekStart: true, karma: true },
     });
@@ -867,27 +895,49 @@ export class RedditAccountsService {
   }
 
   /**
-   * Derive the karma-trend figures from live karma + the two weekly baselines.
+   * Derive the karma-trend figures for the *viewed* week from live karma + the
+   * weekly Monday baselines.
    *
-   * - `karmaThisWeek` = live − this-week baseline. On the first load of the week
-   *   the baseline was just created (= live), so this reads 0 and grows as the
-   *   week progresses.
-   * - `karmaLastWeek` = this-week baseline − last-week baseline, but only when
-   *   *both* baselines already existed before this request. Until then it stays
-   *   null (the "collecting data" state), which needs ~2 weeks of usage.
+   * - In-progress week: `karmaGained` = live − viewed-week baseline (falls back to
+   *   live, i.e. 0, before the first baseline exists).
+   * - Completed week: `karmaGained` = this Monday's baseline − viewed-week
+   *   baseline; null when either is missing.
+   * - Both: `karmaGainedPrevious` = viewed-week baseline − prior-week baseline,
+   *   null until both exist (the "collecting data" state).
+   *
+   * @param liveKarma the account's current total karma.
+   * @param weeks the viewed week's Monday anchors.
+   * @param baselineAt looks up this account's baseline for a given Monday.
+   * @returns the viewed week's gain and the week-before gain.
    */
   private computeKarmaTrend(
     liveKarma: number,
-    baselineThisWeek: number | null,
-    baselineLastWeek: number | null,
-  ): { karmaThisWeek: number; karmaLastWeek: number | null } {
-    const effectiveThisWeek = baselineThisWeek ?? liveKarma;
+    weeks: WeekAnchors,
+    baselineAt: (weekStart: Date) => number | null,
+  ): { karmaGained: number | null; karmaGainedPrevious: number | null } {
+    const viewedBaseline = baselineAt(weeks.viewedWeekStart);
+    const priorBaseline = baselineAt(weeks.priorWeekStart);
+    const karmaGainedPrevious =
+      viewedBaseline !== null && priorBaseline !== null
+        ? viewedBaseline - priorBaseline
+        : null;
+
+    if (weeks.isCompletedWeek) {
+      // Reason: no live-karma fallback for a finished week — a missing boundary
+      // baseline must show "—", not a figure fabricated from today's karma.
+      const endBaseline = baselineAt(weeks.thisWeekStart);
+      return {
+        karmaGained:
+          viewedBaseline !== null && endBaseline !== null
+            ? endBaseline - viewedBaseline
+            : null,
+        karmaGainedPrevious,
+      };
+    }
+
     return {
-      karmaThisWeek: liveKarma - effectiveThisWeek,
-      karmaLastWeek:
-        baselineThisWeek !== null && baselineLastWeek !== null
-          ? baselineThisWeek - baselineLastWeek
-          : null,
+      karmaGained: liveKarma - (viewedBaseline ?? liveKarma),
+      karmaGainedPrevious,
     };
   }
 
