@@ -54,10 +54,10 @@
         </div>
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">Karma this week</span>
+            <span class="kpi-label">Karma {{ periodLabel() }}</span>
             <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmtSigned(kpis()!.karmaGainedThisWeek) }}</div>
+          <div class="kpi-val">{{ fmtSigned(kpis()!.karmaGained) }}</div>
           <div class="kpi-sub">gained so far, all accounts</div>
         </div>
         <!-- Comment quota: live count over the summed per-account target, bar caps at 100%. -->
@@ -97,7 +97,7 @@
         <div class="card">
           <div class="chart-head">
             <span class="chart-title">Karma trend</span>
-            <span class="legend legend-2"><i class="i-last"></i>Last week<i class="i-this"></i>This week</span>
+            <span class="legend legend-2"><i class="i-last"></i>{{ previousPeriodLabel() }}<i class="i-this"></i>{{ periodTitle() }}</span>
           </div>
           @if (hasKarmaTrend()) {
             <app-karma-trend-chart [data]="karmaTrendData()" />
@@ -134,7 +134,7 @@
               <th>Shiller / account</th>
               <th>Comments</th>
               <th>Karma</th>
-              <th>Δ this week</th>
+              <th>Δ {{ periodLabel() }}</th>
               <th>Quota</th>
               <th>Status</th>
             </tr>
@@ -163,10 +163,10 @@
                 <td class="num">
                   @if (groupHasTrend(g)) {
                     <span class="delta"
-                          [class.up]="deltaDir(g.karmaThisWeek) === 'up'"
-                          [class.flat]="deltaDir(g.karmaThisWeek) === 'flat'"
-                          [class.down]="deltaDir(g.karmaThisWeek) === 'down'">
-                      {{ deltaGlyph(g.karmaThisWeek) }} {{ fmtSigned(g.karmaThisWeek) }}
+                          [class.up]="deltaDir(g.karmaGained) === 'up'"
+                          [class.flat]="deltaDir(g.karmaGained) === 'flat'"
+                          [class.down]="deltaDir(g.karmaGained) === 'down'">
+                      {{ deltaGlyph(g.karmaGained) }} {{ fmtSigned(g.karmaGained) }}
                     </span>
                   } @else {
                     <span class="sub">—</span>
@@ -198,10 +198,10 @@
                     <td class="num">
                       @if (hasTrend(a)) {
                         <span class="delta"
-                              [class.up]="deltaDir(a.karmaThisWeek) === 'up'"
-                              [class.flat]="deltaDir(a.karmaThisWeek) === 'flat'"
-                              [class.down]="deltaDir(a.karmaThisWeek) === 'down'">
-                          {{ deltaGlyph(a.karmaThisWeek) }} {{ fmtSigned(a.karmaThisWeek) }}
+                              [class.up]="deltaDir(a.karmaGained) === 'up'"
+                              [class.flat]="deltaDir(a.karmaGained) === 'flat'"
+                              [class.down]="deltaDir(a.karmaGained) === 'down'">
+                          {{ deltaGlyph(a.karmaGained) }} {{ fmtSigned(a.karmaGained) }}
                         </span>
                       } @else {
                         <span class="sub">—</span>
@@ -251,10 +251,10 @@
         </div>
         <div class="card kpi">
           <div class="kpi-top">
-            <span class="kpi-label">Karma this week</span>
+            <span class="kpi-label">Karma {{ periodLabel() }}</span>
             <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2DD4A7" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" /></svg></span>
           </div>
-          <div class="kpi-val">{{ fmtSigned(kpis()!.karmaGainedThisWeek) }}</div>
+          <div class="kpi-val">{{ fmtSigned(kpis()!.karmaGained) }}</div>
           <div class="kpi-sub">gained so far, your accounts</div>
         </div>
         <!-- Comment quota: your live count over your summed per-account target. -->
@@ -298,7 +298,7 @@
               <th>Account</th>
               <th>Comments</th>
               <th>Karma</th>
-              <th>Δ this week</th>
+              <th>Δ {{ periodLabel() }}</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -313,14 +313,14 @@
                 </td>
                 <td class="num">{{ a.weeklyComments }}</td>
                 <td class="num">{{ fmt(a.karma) }}</td>
-                <!-- Δ karma: this week's gain, coloured by its own sign; "—" until a baseline exists. -->
+                <!-- Δ karma: the viewed week's gain, coloured by its own sign; "—" until a baseline exists. -->
                 <td class="num">
                   @if (hasTrend(a)) {
                     <span class="delta"
-                          [class.up]="deltaDir(a.karmaThisWeek) === 'up'"
-                          [class.flat]="deltaDir(a.karmaThisWeek) === 'flat'"
-                          [class.down]="deltaDir(a.karmaThisWeek) === 'down'">
-                      {{ deltaGlyph(a.karmaThisWeek) }} {{ fmtSigned(a.karmaThisWeek) }}
+                          [class.up]="deltaDir(a.karmaGained) === 'up'"
+                          [class.flat]="deltaDir(a.karmaGained) === 'flat'"
+                          [class.down]="deltaDir(a.karmaGained) === 'down'">
+                      {{ deltaGlyph(a.karmaGained) }} {{ fmtSigned(a.karmaGained) }}
                     </span>
                   } @else {
                     <span class="sub">—</span>

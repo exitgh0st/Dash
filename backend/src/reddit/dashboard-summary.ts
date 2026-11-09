@@ -23,16 +23,16 @@ export interface DashboardAccountRow {
   /** Current total karma from Reddit, or null when the account errored. */
   karma: number | null;
   /**
-   * Karma gained so far this week = current karma − this week's baseline
-   * snapshot. null when the account errored or no baseline exists yet.
+   * Karma gained during the *viewed* week. This week: current karma − this
+   * Monday's baseline. Last week: this Monday's baseline − last Monday's. null
+   * when the account errored or a needed baseline is missing.
    */
-  karmaThisWeek: number | null;
+  karmaGained: number | null;
   /**
-   * Karma gained across last week = this week's baseline − last week's baseline.
-   * null until baselines exist for two consecutive weeks (the "collecting data"
-   * state).
+   * Karma gained during the week *before* the viewed one (viewed Monday's
+   * baseline − the prior Monday's). null until both baselines exist.
    */
-  karmaLastWeek: number | null;
+  karmaGainedPrevious: number | null;
   /** Owning shiller's email — populated for admins only. */
   ownerEmail?: string;
   /** Owning shiller's user id — populated for admins only; used to group + link rows. */
@@ -51,8 +51,10 @@ export interface DashboardKpis {
   totalAccounts: number;
   activeAccounts: number;
   totalKarma: number;
-  /** Sum of per-account karma gained so far this week. */
-  karmaGainedThisWeek: number;
+  /** Sum of per-account karma gained during the viewed week. */
+  karmaGained: number;
+  /** Sum of the week-before gain; null until any account has that figure. */
+  karmaGainedPrevious: number | null;
   /**
    * Weekly comment-quota target aggregated across in-scope accounts — the sum of
    * each account's owner's per-account `weeklyCommentQuota`. 0 when no accounts.
