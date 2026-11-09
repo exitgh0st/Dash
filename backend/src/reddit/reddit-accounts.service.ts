@@ -85,6 +85,11 @@ interface CachedWeekMetric {
   refreshedAt: Date;
 }
 
+// Temporary grace-day override for one week (see resolveRange). Safe to delete
+// once the Nov 2, 2026 week no longer needs re-counting.
+const GRACE_WEEK_START = new Date('2026-11-02T00:00:00.000Z');
+const GRACE_WEEK_COUNTED_END = new Date('2026-11-09T23:59:59.999Z');
+
 /** Monday 00:00:00.000 (local) of the week containing `date`. */
 function startOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -123,9 +128,19 @@ function resolveRange(key: DashboardRangeKey): DashboardRange {
   weekEnd.setDate(weekStart.getDate() + 7);
   weekEnd.setMilliseconds(-1);
 
+  // One-off grace day: the week of Nov 2, 2026 also counts comments made on
+  // Mon Nov 9 (UTC), so shillers who missed last week can still hit its quota.
+  // Why: those comments count toward the current week too (deliberate double
+  // count), and the label stays Mon–Sun so the extension is invisible in the UI.
+  // Self-expiring: from Nov 10 "last week" is Nov 9–15, so this never matches.
+  const countedEnd =
+    isLast && weekStart.getTime() === GRACE_WEEK_START.getTime()
+      ? GRACE_WEEK_COUNTED_END
+      : weekEnd;
+
   return {
     from: weekStart.toISOString(),
-    to: isLast ? weekEnd.toISOString() : now.toISOString(),
+    to: isLast ? countedEnd.toISOString() : now.toISOString(),
     label: formatRangeLabel(weekStart, weekEnd),
   };
 }
